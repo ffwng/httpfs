@@ -73,18 +73,21 @@ getHTTPEntry fs p = do
 getHTTPContent :: FS -> FilePath -> IO BufferedFile
 getHTTPContent fs p = do
   closeAct <- newIORef (return ())
+
+  let close = join $ readIORef closeAct
   
   let gen off = do
         let req = mkRequest fs p
             req' = req { requestHeaders = h : requestHeaders req }
             h = ("Range", "bytes=" <> B8.pack (show start) <> "-")
             start = fromIntegral off :: Word64
+        close -- close previous request
         res' <- responseOpen req' (manager fs)
         writeIORef closeAct (responseClose res')
 
         responseToErrno res' $ \res -> return . Right $ brRead (responseBody res)
 
-  makeBufferedFile gen (join $ readIORef closeAct)
+  makeBufferedFile gen close
 
 processDirResponse :: FS -> FilePath -> Response a -> IO (Either Errno Entry)
 processDirResponse fs p _ = do
