@@ -9,7 +9,7 @@ type EntrySize = FileOffset
 data EntryType = DirType | FileType
                deriving (Show, Eq, Ord)
 
-data Entry = Dir EntryDate
+data Entry = Dir
            | File EntryDate EntrySize
            deriving (Show, Eq, Ord)
 

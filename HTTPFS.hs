@@ -8,6 +8,8 @@ import BufferedFile
 import Data.Monoid
 import Data.Word
 import Data.IORef
+import Data.Time
+import Data.Time.Clock.POSIX
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL
 import Control.Applicative
@@ -17,6 +19,8 @@ import Network.HTTP.Client
 import Network.URI hiding (path, query)
 import Foreign.C
 import Text.Read
+import System.Locale
+import System.Posix (EpochTime)
 
 type Cache = MemCache FilePath (Either EntryType Entry)
 
@@ -91,22 +95,34 @@ getHTTPContent fs p = do
 
 processDirResponse :: FS -> FilePath -> Response a -> IO (Either Errno Entry)
 processDirResponse fs p _ = do
-  let d = 0
-      entry = Dir d
+  let entry = Dir
   insert (cache fs) p (Right entry)
   return $ Right entry
 
 processFileResponse :: FS -> FilePath -> Response a -> IO (Either Errno Entry)
 processFileResponse fs p res = do
-  let d = 0
   let headers = responseHeaders res
-  case (,) <$> lookup "Content-Length" headers
-       <*> lookup "Accept-Ranges" headers of
-    Just (s, "bytes") | Just s' <- readMaybe (B8.unpack s) -> do
-      let entry = File d s'
+  case (,,) <$> lookup "Content-Length" headers
+       <*> lookup "Accept-Ranges" headers
+       <*> lookup "Last-Modified" headers of
+    Just (s, "bytes", t) | Just s' <- readMaybe (B8.unpack s)
+                         , Just t' <- parseHTTPTime t -> do
+      let entry = File (toEpochTime t') s'
       insert (cache fs) p (Right entry)
       return $ Right entry
     _ -> return $ Left eINVAL
+
+toEpochTime :: UTCTime -> EpochTime
+toEpochTime = CTime . truncate . utcTimeToPOSIXSeconds
+
+parseHTTPTime :: B8.ByteString -> Maybe UTCTime
+parseHTTPTime bs =
+  msum $ map (\f -> parseTime defaultTimeLocale f s) [rfc822, rfc850, ansiC]
+  where
+    s = B8.unpack bs
+    rfc822 = "%a, %d %b %Y %H:%M:%S %Z"
+    rfc850 = "%A, %d-%b-y %H:%M:%S %Z"
+    ansiC = "%a %b %e %H:%M:%S %Y"
 
 requestHead :: FS -> FilePath -> IO (Response ())
 requestHead fs p = do

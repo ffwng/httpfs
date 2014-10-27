@@ -29,10 +29,15 @@ stdOps parse fs = Ops entries entry content where
       Left e -> return $ Left e
       Right bs -> do
         l <- parse bs
-        forM_ l $ \(n, e) -> cacheBetter (cache fs) (p ++ '/':n) e
+        forM_ l $ \(n, e) -> cacheBetter (cache fs) (combine p n) e
         return . Right $ map (fmap $ either id entryType) l
   entry = getHTTPEntry fs
   content = getHTTPContent fs
+
+combine :: FilePath -> FilePath -> FilePath
+combine "" p = p
+combine "/" p = '/':p
+combine p1 p2 = p1 ++ '/':p2
 
 cacheBetter :: Ord a => MemCache a (Either b c) -> a -> Either b c -> IO ()
 cacheBetter mc a e@(Right _) = insert mc a e

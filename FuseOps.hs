@@ -20,7 +20,7 @@ myGetFileStat :: Ops -> FilePath -> IO (Either Errno FileStat)
 myGetFileStat o f = do
   ctx <- getFuseContext
   if f == "/" || f == "." || f == ".."
-    then return (Right $ dirStat ctx)
+    then return (Right $ dirStat ctx 0)
     else fmap (entryToFileStat ctx) <$> getEntry o f
 
 myOpen :: Ops -> FilePath -> OpenMode -> OpenFileFlags
@@ -42,7 +42,7 @@ myOpenDirectory :: Ops -> FilePath -> IO Errno
 myOpenDirectory _ _ = return eOK
 
 defaultStats :: FuseContext -> [(FilePath, FileStat)]
-defaultStats ctx = [(".", dirStat ctx), ("..", dirStat ctx)]
+defaultStats ctx = [(".", dirStat ctx 0), ("..", dirStat ctx 0)]
 
 myReadDirectory :: Ops -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 myReadDirectory o f = do
@@ -74,13 +74,12 @@ myFuseOperations o = defaultFuseOps
 
 entryTypeToFileStat :: FuseContext -> EntryType -> FileStat
 entryTypeToFileStat ctx = go
-  where go DirType = dirStat ctx
-        go FileType = fileStat ctx (0 :: Int)  -- does not matter,
-                                               -- real size is given
-                                               -- by getFileStat
+  where go DirType = dirStat ctx 0
+        go FileType = fileStat ctx 0 (0 :: Int)
+        -- actual values are ignored and real values are obtained with stat
 
 entryToFileStat :: FuseContext -> Entry -> FileStat
 entryToFileStat ctx = go
-  where go (Dir _) = dirStat ctx
-        go (File _ s) = fileStat ctx s
+  where go Dir = dirStat ctx 0
+        go (File t s) = fileStat ctx t s
 

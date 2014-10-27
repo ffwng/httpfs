@@ -2,9 +2,10 @@ module Stat where
 
 import System.Fuse
 import System.Posix.Files
+import System.Posix (EpochTime)
 
-dirStat :: FuseContext -> FileStat
-dirStat ctx = FileStat {
+dirStat :: FuseContext -> EpochTime -> FileStat
+dirStat ctx t = FileStat {
 	statEntryType = Directory
 	, statFileMode = foldr1 unionFileModes
 		[ ownerReadMode
@@ -20,13 +21,13 @@ dirStat ctx = FileStat {
 		, statSpecialDeviceID = 0
 		, statFileSize = 4096
 		, statBlocks = 1
-		, statAccessTime = 0
-		, statModificationTime = 0
-		, statStatusChangeTime = 0
+		, statAccessTime = t
+		, statModificationTime = t
+		, statStatusChangeTime = t
 	}
 
-fileStat :: Integral a => FuseContext -> a -> FileStat
-fileStat ctx size = FileStat {
+fileStat :: Integral a => FuseContext -> EpochTime -> a -> FileStat
+fileStat ctx t size = FileStat {
 	statEntryType = RegularFile
 	, statFileMode = foldr1 unionFileModes
 		[ ownerReadMode
@@ -40,41 +41,7 @@ fileStat ctx size = FileStat {
 	, statSpecialDeviceID = 0
 	, statFileSize = fromIntegral size
 	, statBlocks = fromIntegral size `div` 512 + 1 -- FIXME
-	, statAccessTime = 0
-	, statModificationTime = 0
-	, statStatusChangeTime = 0
+	, statAccessTime = t
+	, statModificationTime = t
+	, statStatusChangeTime = t
 	}
-
-linkStat :: Integral a => FuseContext -> a -> FileStat
-linkStat ctx size = FileStat {
-	statEntryType = SymbolicLink
-	, statFileMode = accessModes
-	, statLinkCount = 1
-	, statFileOwner = fuseCtxUserID ctx
-	, statFileGroup = fuseCtxGroupID ctx
-	, statSpecialDeviceID = 0
-	, statFileSize = fromIntegral size
-	, statBlocks = 1
-	, statAccessTime = 0
-	, statModificationTime = 0
-	, statStatusChangeTime = 0
-	}
-
-realFileStat :: FilePath -> IO FileStat
-realFileStat uri = do
-	status <- getFileStatus uri
-	return FileStat {
-		statEntryType = RegularFile
-		, statFileMode = fileMode status
-		, statLinkCount = linkCount status
-		, statFileOwner = fileOwner status
-		, statFileGroup = fileGroup status
-		, statSpecialDeviceID = specialDeviceID status
-		, statFileSize = fileSize status
-		, statBlocks = 1 -- This is WRONG. Change
-		, statAccessTime= accessTime status
-		, statModificationTime = modificationTime status
-		, statStatusChangeTime = statusChangeTime status
-		}
-
-
