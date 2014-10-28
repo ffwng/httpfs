@@ -33,11 +33,11 @@ data FS = FS {
   cache :: Cache
   }
 
-newFS :: String -> ManagerSettings -> IO FS
-newFS baseurl manset = do
+newFS :: (Request -> Request) -> String -> ManagerSettings -> IO FS
+newFS f baseurl manset = do
   man <- newManager manset
   reqtempl <- parseUrl baseurl
-  let mkReq = makeRequest reqtempl { checkStatus = \_ _ _ -> Nothing }
+  let mkReq = makeRequest $ f (reqtempl { checkStatus = \_ _ _ -> Nothing })
   mc <- newMemCache defaultTimeout
   return $ FS mkReq man mc
 
