@@ -40,8 +40,12 @@ fileStat ctx t size = FileStat {
 	, statFileGroup = fuseCtxGroupID ctx
 	, statSpecialDeviceID = 0
 	, statFileSize = fromIntegral size
-	, statBlocks = fromIntegral size `div` 512 + 1 -- FIXME
+	, statBlocks = calcBlocks $ fromIntegral size
 	, statAccessTime = t
 	, statModificationTime = t
 	, statStatusChangeTime = t
 	}
+  where
+    calcBlocks s = case s `quotRem` 512 of
+      (b, 0) -> b
+      (b, _) -> b+1
