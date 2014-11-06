@@ -14,13 +14,14 @@ import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL
 import Control.Applicative
 import Control.Monad
+import Control.Exception
 import Network.HTTP.Types
 import Network.HTTP.Client
 import Network.URI hiding (path, query)
-import Foreign.C
 import Text.Read
 import System.Locale
 import System.Posix (EpochTime)
+import Foreign.C (CTime(..))
 
 type Cache = MemCache FilePath (Either EntryType Entry)
 
@@ -37,42 +38,36 @@ newFS :: (Request -> Request) -> String -> ManagerSettings -> IO FS
 newFS f baseurl manset = do
   man <- newManager manset
   reqtempl <- parseUrl baseurl
-  let mkReq = makeRequest $ f (reqtempl { checkStatus = \_ _ _ -> Nothing })
+  let mkReq = makeRequest $ f reqtempl
   mc <- newMemCache defaultTimeout
   return $ FS mkReq man mc
 
 
-getHTTPDirectoryHTML :: FS -> FilePath -> IO (Either Errno BL.ByteString)
+getHTTPDirectoryHTML :: FS -> FilePath -> IO BL.ByteString
 getHTTPDirectoryHTML fs p = do
   let p' = p ++ "/"
-  res' <- httpLbs (mkRequest fs p') (manager fs)
-  responseToErrno res' $ \res -> do
-    _ <- processDirResponse fs p res
-    return . Right $ responseBody res
+  res <- httpLbs (mkRequest fs p') (manager fs)
+  _ <- processDirResponse fs p res
+  return $ responseBody res
 
-getHTTPEntry :: FS -> FilePath -> IO (Either Errno Entry)
+getHTTPEntry :: FS -> FilePath -> IO Entry
 getHTTPEntry fs p = do
   cached <- query (cache fs) p
   case cached of
-    Just (Right e) -> return (Right e)
+    Just (Right e) -> return e
     Just (Left t) -> do
-      let p' = case t of
-            FileType -> p
-            DirType -> p ++ "/"
-      requestHead fs p' >>= go t
+      let (p', process) = case t of
+            FileType -> (p, processFileResponse)
+            DirType -> (p ++ "/", processDirResponse)
+      requestHead fs p' >>= process fs p
     Nothing -> do
-      let req (t, p') = (t,) <$> requestHead fs p'
-          check (_, r) = responseStatus r /= status404
-      res <- tryActions check $ map req [(DirType, p ++ "/"), (FileType, p)]
-      case res of
-        Nothing -> return $ Left eNOENT
-        Just (t, res') -> go t res'
+      dirRes <- tryJust is404 $ requestHead fs (p ++ "/")
+      case dirRes of
+        Right res -> processDirResponse fs p res
+        Left _ -> requestHead fs p >>= processFileResponse fs p
   where
-    go t res' = responseToErrno res' $ \res -> do
-      let f = case t of
-            DirType -> processDirResponse
-            FileType -> processFileResponse
-      f fs p res
+    is404 (StatusCodeException s _ _) | s == status404 = Just ()
+    is404 _ = Nothing
 
 getHTTPContent :: FS -> FilePath -> IO BufferedFile
 getHTTPContent fs p = do
@@ -86,20 +81,20 @@ getHTTPContent fs p = do
             h = ("Range", "bytes=" <> B8.pack (show start) <> "-")
             start = fromIntegral off :: Word64
         close -- close previous request
-        res' <- responseOpen req' (manager fs)
-        writeIORef closeAct (responseClose res')
+        res <- responseOpen req' (manager fs)
+        writeIORef closeAct (responseClose res)
 
-        responseToErrno res' $ \res -> return . Right $ brRead (responseBody res)
+        return $ brRead (responseBody res)
 
   makeBufferedFile gen close
 
-processDirResponse :: FS -> FilePath -> Response a -> IO (Either Errno Entry)
+processDirResponse :: FS -> FilePath -> Response a -> IO Entry
 processDirResponse fs p _ = do
   let entry = Dir
   insert (cache fs) p (Right entry)
-  return $ Right entry
+  return entry
 
-processFileResponse :: FS -> FilePath -> Response a -> IO (Either Errno Entry)
+processFileResponse :: FS -> FilePath -> Response a -> IO Entry
 processFileResponse fs p res = do
   let headers = responseHeaders res
   case (,,) <$> lookup "Content-Length" headers
@@ -109,8 +104,8 @@ processFileResponse fs p res = do
                          , Just t' <- parseHTTPTime t -> do
       let entry = File (toEpochTime t') s'
       insert (cache fs) p (Right entry)
-      return $ Right entry
-    _ -> return $ Left eINVAL
+      return entry
+    _ -> error "invalid file response"
 
 toEpochTime :: UTCTime -> EpochTime
 toEpochTime = CTime . truncate . utcTimeToPOSIXSeconds
@@ -142,10 +137,3 @@ tryActions f = go where
 makeRequest :: Request -> FilePath -> Request
 makeRequest templ p = templ { path = path templ <> B8.pack (encode p) } where
   encode = escapeURIString (\c -> isUnreserved c || c == '/')
-
-responseToErrno :: Response a -> (Response a -> IO (Either Errno b))
-                -> IO (Either Errno b)
-responseToErrno r f = case statusCode $ responseStatus r of
-  x | x >= 200 && x < 300 -> f r
-  404 -> return $ Left eNOENT
-  _ -> return $ Left eINVAL

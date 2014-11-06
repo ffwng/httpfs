@@ -3,7 +3,6 @@ module BufferedFile where
 import Data.IORef
 import Data.Monoid
 import System.Posix (ByteCount, FileOffset)
-import Foreign.C (Errno)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.ByteString.Lazy (toStrict)
@@ -11,11 +10,11 @@ import Data.ByteString.Builder
 import Control.Concurrent.MVar
 
 data BufferedFile = BufferedFile {
-  readBufferedFile :: ByteCount -> FileOffset -> IO (Either Errno ByteString),
+  readBufferedFile :: ByteCount -> FileOffset -> IO ByteString,
   closeBufferedFile :: IO ()
   }
 
-makeBufferedFile :: (FileOffset -> IO (Either Errno (IO ByteString)))
+makeBufferedFile :: (FileOffset -> IO (IO ByteString))
                  -> IO ()
                  -> IO BufferedFile
 makeBufferedFile gen close = do
@@ -38,15 +37,12 @@ makeBufferedFile gen close = do
   leftover <- newIORef mempty
   
   let readCount cur count = do
-        s <- readIORef source
-        case s of
-          Left e -> return $ Left e
-          Right f -> do
-            lo <- readIORef leftover
-            (lo', res) <- readSource f lo (fromIntegral count)
-            writeIORef leftover lo'
-            writeIORef counter $ cur + fromIntegral (B.length res)
-            return $ Right res
+        f <- readIORef source
+        lo <- readIORef leftover
+        (lo', res) <- readSource f lo (fromIntegral count)
+        writeIORef leftover lo'
+        writeIORef counter $ cur + fromIntegral (B.length res)
+        return res
 
   lock <- newMVar ()
   

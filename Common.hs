@@ -19,13 +19,10 @@ import Network.HTTP.Client
 stdOps :: (BL.ByteString -> IO [(String, Either EntryType Entry)]) -> FS -> Ops
 stdOps parse fs = Ops entries entry content where
   entries p = do
-    html <- getHTTPDirectoryHTML fs p
-    case html of
-      Left e -> return $ Left e
-      Right bs -> do
-        l <- parse bs
-        forM_ l $ \(n, e) -> cacheBetter (cache fs) (combine p n) e
-        return . Right $ map (fmap $ either id entryType) l
+    bs <- getHTTPDirectoryHTML fs p
+    l <- parse bs
+    forM_ l $ \(n, e) -> cacheBetter (cache fs) (combine p n) e
+    return $ map (fmap $ either id entryType) l
   entry = getHTTPEntry fs
   content = getHTTPContent fs
 

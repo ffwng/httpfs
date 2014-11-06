@@ -11,8 +11,8 @@ import System.Posix.Types
 import Data.ByteString (ByteString)
 
 data Ops = Ops
-           { getEntries :: FilePath -> IO (Either Errno [(EntryName, EntryType)])
-           , getEntry :: FilePath -> IO (Either Errno Entry)
+           { getEntries :: FilePath -> IO [(EntryName, EntryType)]
+           , getEntry :: FilePath -> IO Entry
            , getContent :: FilePath -> IO BufferedFile
            }
 
@@ -21,7 +21,7 @@ myGetFileStat o f = do
   ctx <- getFuseContext
   if f == "/" || f == "." || f == ".."
     then return (Right $ dirStat ctx 0)
-    else fmap (entryToFileStat ctx) <$> getEntry o f
+    else Right . entryToFileStat ctx <$> getEntry o f
 
 myOpen :: Ops -> FilePath -> OpenMode -> OpenFileFlags
        -> IO (Either Errno BufferedFile)
@@ -33,7 +33,7 @@ myOpen o p m _ = case m of
 
 myRead :: Ops -> FilePath -> BufferedFile -> ByteCount -> FileOffset
        -> IO (Either Errno ByteString)
-myRead _ _ = readBufferedFile
+myRead _ _ bf bc fo = Right <$> readBufferedFile bf bc fo
 
 myRelease :: FilePath -> BufferedFile -> IO ()
 myRelease _ = closeBufferedFile
@@ -47,7 +47,7 @@ defaultStats ctx = [(".", dirStat ctx 0), ("..", dirStat ctx 0)]
 myReadDirectory :: Ops -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 myReadDirectory o f = do
   ctx <- getFuseContext
-  fmap (\l -> defaultStats ctx ++ map (fmap (entryTypeToFileStat ctx)) l)
+  Right . (\l -> defaultStats ctx ++ map (fmap $ entryTypeToFileStat ctx) l)
     <$> getEntries o f
 
 getFileSystemStats :: String -> IO (Either Errno FileSystemStats)

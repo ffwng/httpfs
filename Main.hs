@@ -13,14 +13,13 @@ import OpenSSL.Session
 import System.Fuse hiding (EntryType)
 import System.Environment
 import Options.Applicative
+import Control.Exception
 
 checkServer :: FS -> IO ()
 checkServer fs = do
   let req = (mkRequest fs "/") { method = methodHead }
-  res <- httpNoBody req (manager fs)
-  if responseStatus res /= status200
-    then error $ "Error: " ++ show (responseStatus res)
-    else return ()
+  _ <- httpNoBody req (manager fs) -- throws exception on error
+  return ()
 
 mkContext :: Bool -> IO SSLContext
 mkContext novalidate = do
@@ -50,4 +49,10 @@ main = withOpenSSL $ do
 
   let fuseArgs = [mountPoint args]
   p <- getProgName
-  fuseRun p fuseArgs (myFuseOperations $ stdOps parse fs) defaultExceptionHandler
+  fuseRun p fuseArgs (myFuseOperations $ stdOps parse fs) httpExceptionHandler
+
+httpExceptionHandler :: SomeException -> IO Errno
+httpExceptionHandler e = case fromException e of
+  Just (StatusCodeException s _ _) | s == status404 -> return eNOENT
+  Just _ -> return eINVAL
+  Nothing -> print e >> return eFAULT
