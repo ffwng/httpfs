@@ -7,7 +7,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Control.Concurrent.MVar
 import qualified System.IO.Streams as S
-import Data.Functor
+import Control.Applicative
 import Control.Monad
 import Control.Exception
 
@@ -16,37 +16,36 @@ data BufferedFile = BufferedFile {
   closeBufferedFile :: IO ()
   }
 
+data ReadFunc = ReadFunc (ByteCount -> FileOffset -> IO (ByteString, ReadFunc))
+
+mkReadFunc :: (FileOffset -> IO (S.InputStream ByteString)) -> IO ReadFunc
+mkReadFunc gen = func 0 <$> gen 0 where
+  func pos stream = ReadFunc $ \count off -> do
+    newStream <- if off == pos
+                 then return stream
+                 else gen off
+    bs <- readAtMost (fromIntegral count) newStream
+    return (bs, func (off + fromIntegral count) newStream)
+
 makeBufferedFile :: (FileOffset -> IO (IO ByteString))
                  -> IO ()
                  -> IO BufferedFile
-makeBufferedFile gen' close = do
-  let gen off = gen' off >>= makeStream
-  
-  source <- gen 0 >>= newIORef
-  pos <- newIORef 0
-  
+makeBufferedFile gen close = do
+  source <- mkReadFunc (gen >=> makeStream) >>= newIORef
   lock <- newMVar ()
   
   let readBuffered count off = withMVar lock $ \() -> do
-        cur <- readIORef pos
-        input <- if off == cur
-                 then readIORef source
-                 else do
-                   sourceNew <- gen off
-                   writeIORef source sourceNew
-                   return sourceNew
-        let count' = fromIntegral count
-        bs <- readAtMost count' input `onException` writeIORef pos (-1)
-        writeIORef pos $ off + fromIntegral (B.length bs)
+        ReadFunc f <- readIORef source
+        (bs, new) <- f count off
+        writeIORef source new
         return bs
 
   return $ BufferedFile readBuffered close
 
-
 makeStream :: IO ByteString -> IO (S.InputStream ByteString)
-makeStream f = S.makeInputStream (trans <$> f) where
-  trans bs | B.null bs = Nothing
-           | otherwise = Just bs
+makeStream f = S.makeInputStream (trans <$> f)
+  where trans bs | B.null bs = Nothing
+                 | otherwise = Just bs
 
 -- copied and adapted from io-streams
 readAtMost :: Int                     -- ^ number of bytes to read
