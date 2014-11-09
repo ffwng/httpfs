@@ -9,7 +9,8 @@ data CmdArgs = CmdArgs {
   disableCertificateValidation :: Bool,
   basicAuth :: Maybe (B.ByteString, B.ByteString),
   baseUrl :: String,
-  mountPoint :: String
+  mountPoint :: String,
+  otherArgs :: [String]
   }
 
 cmdArgs :: Parser CmdArgs
@@ -26,6 +27,8 @@ cmdArgs = CmdArgs
                             <> help "URL of root directory" )
           <*> strArgument ( metavar "MOUNT-POINT"
                           <> help "Mount point for FUSE" )
+          <*> many (strArgument $ metavar "ARGS..."
+                    <> help "Additional FUSE arguments like -f -d (use --)")
 
 readAuth :: String -> Either String (B.ByteString, B.ByteString)
 readAuth s = case B.split ':' $ B.pack s of

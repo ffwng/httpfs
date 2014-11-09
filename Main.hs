@@ -47,7 +47,7 @@ main = withOpenSSL $ do
   checkServer fs
   parse <- guessServer fs
 
-  let fuseArgs = [mountPoint args]
+  let fuseArgs = mountPoint args : otherArgs args
   p <- getProgName
   fuseRun p fuseArgs (myFuseOperations $ stdOps parse fs) httpExceptionHandler
 
