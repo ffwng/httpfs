@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 module BufferedFile where
 
 import Data.IORef
@@ -6,10 +5,7 @@ import System.Posix (ByteCount, FileOffset)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Control.Concurrent.MVar
-import qualified System.IO.Streams as S
 import Control.Applicative
-import Control.Monad
-import Control.Exception
 
 data BufferedFile = BufferedFile {
   readBufferedFile :: ByteCount -> FileOffset -> IO ByteString,
@@ -18,20 +14,38 @@ data BufferedFile = BufferedFile {
 
 data ReadFunc = ReadFunc (ByteCount -> FileOffset -> IO (ByteString, ReadFunc))
 
-mkReadFunc :: (FileOffset -> IO (S.InputStream ByteString)) -> IO ReadFunc
+mkReadFunc :: (FileOffset -> IO Stream) -> IO ReadFunc
 mkReadFunc gen = func 0 <$> gen 0 where
   func pos stream = ReadFunc $ \count off -> do
-    newStream <- if off == pos
-                 then return stream
-                 else gen off
-    bs <- readAtMost (fromIntegral count) newStream
+    inputStream <- if off == pos
+                   then return stream
+                   else gen off
+    (bs, newStream) <- readAtMost inputStream count
     return (bs, func (off + fromIntegral count) newStream)
+
+
+data Stream = Stream { readAtMost :: ByteCount -> IO (ByteString, Stream) }
+
+toStream :: IO ByteString -> Stream
+toStream f = func B.empty where
+  func lo = Stream $ \count -> do
+    (bs, lo') <- readHelper f (fromIntegral count) lo
+    return (bs, func lo')
+
+readHelper :: IO ByteString -> Int -> ByteString -> IO (ByteString, ByteString)
+readHelper f count lo = go (B.length lo) (lo:) where
+  go n dl = if n >= count
+            then return . B.splitAt count . B.concat $ dl []
+            else do
+              chunk <- f
+              let newN = if B.null chunk then count else n + B.length chunk 
+              go newN (dl . (chunk:))
 
 makeBufferedFile :: (FileOffset -> IO (IO ByteString))
                  -> IO ()
                  -> IO BufferedFile
 makeBufferedFile gen close = do
-  source <- mkReadFunc (gen >=> makeStream) >>= newIORef
+  source <- mkReadFunc (fmap toStream . gen) >>= newIORef
   lock <- newMVar ()
   
   let readBuffered count off = withMVar lock $ \() -> do
@@ -41,27 +55,3 @@ makeBufferedFile gen close = do
         return bs
 
   return $ BufferedFile readBuffered close
-
-makeStream :: IO ByteString -> IO (S.InputStream ByteString)
-makeStream f = S.makeInputStream (trans <$> f)
-  where trans bs | B.null bs = Nothing
-                 | otherwise = Just bs
-
--- copied and adapted from io-streams
-readAtMost :: Int                     -- ^ number of bytes to read
-            -> S.InputStream ByteString  -- ^ input stream
-            -> IO ByteString
-readAtMost n input = go id n
-  where
-    go !dl 0  = return $! B.concat $! dl []
-    go !dl k  =
-        S.read input >>=
-        maybe (return $! B.concat $! dl [])
-              (\s -> do
-                 let l = B.length s
-                 if l >= k
-                   then do
-                     let (a,b) = B.splitAt k s
-                     when (not $ B.null b) $ S.unRead b input
-                     return $! B.concat $! dl [a]
-                   else go (dl . (s:)) (k - l))
