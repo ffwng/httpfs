@@ -10,14 +10,17 @@ import Text.XML.HXT.Core
 isDirLink :: String -> Bool
 isDirLink s = "/" `isSuffixOf` s
 
+isParentLink :: String -> Bool
+isParentLink s = s == "../" || isAbs s where
+  isAbs ('/':_) = True
+  isAbs _ = False
+
 parse :: (ArrowXml a, ArrowChoice a, ArrowIO a)
          => a XmlTree (EntryName, Either EntryType Entry)
 parse = proc x -> do
-  row <- deep (hasName "tbody") /> hasName "tr" -< x
-  [name_, _, _] <- listA (this /> hasName "td") -< row
+  td <- deep (hasName "td") -< x
   name <- this /> hasName "a" >>> getAttrValue0 "href"
-          >>> isA (/= "../") >>> arr unEscapeString -< name_
+          >>> isA (not . isParentLink) >>> arr unEscapeString -< td
   if isDirLink name
     then returnA -< (init name, Right Dir)
     else returnA -< (name, Left FileType)
-
