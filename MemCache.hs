@@ -2,7 +2,6 @@ module MemCache where
 
 import qualified Data.Map as M
 import Data.IORef
-import Data.Functor
 import System.Posix.Types
 import System.Posix.Time
 
@@ -28,4 +27,3 @@ query mc@(MemCache _ ref) a = do
     Nothing -> return Nothing
     Just (t', _) | t' < t -> delete mc a >> return Nothing
     Just (_, b) -> return (Just b)
-

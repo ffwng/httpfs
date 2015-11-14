@@ -5,7 +5,6 @@ import Types
 import Stat
 import BufferedFile
 
-import Data.Functor
 import System.Fuse hiding (EntryType)
 import System.Posix.Types
 import Data.ByteString (ByteString)
@@ -52,14 +51,14 @@ myReadDirectory o f = do
 
 getFileSystemStats :: String -> IO (Either Errno FileSystemStats)
 getFileSystemStats _ = return $ Right FileSystemStats
-	{ fsStatBlockSize = 512
-	, fsStatBlockCount = 1
-	, fsStatBlocksFree = 1
-	, fsStatBlocksAvailable = 1
-	, fsStatFileCount = 5 -- IS THIS CORRECT?
-	, fsStatFilesFree = 10 -- WHAT IS THIS?
-	, fsStatMaxNameLength = 255 -- SEEMS SMALL?
-	}
+  { fsStatBlockSize = 512
+  , fsStatBlockCount = 1
+  , fsStatBlocksFree = 1
+  , fsStatBlocksAvailable = 1
+  , fsStatFileCount = 5 -- IS THIS CORRECT?
+  , fsStatFilesFree = 10 -- WHAT IS THIS?
+  , fsStatMaxNameLength = 255 -- SEEMS SMALL?
+  }
 
 myFuseOperations :: Ops -> FuseOperations BufferedFile
 myFuseOperations o = defaultFuseOps
@@ -82,4 +81,3 @@ entryToFileStat :: FuseContext -> Entry -> FileStat
 entryToFileStat ctx = go
   where go Dir = dirStat ctx 0
         go (File t s) = fileStat ctx t s
-

@@ -12,14 +12,12 @@ import Data.Time
 import Data.Time.Clock.POSIX
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as BL
-import Control.Applicative
 import Control.Monad
 import Control.Exception
 import Network.HTTP.Types
 import Network.HTTP.Client
 import Network.URI hiding (path, query)
 import Text.Read
-import System.Locale
 import System.Posix (EpochTime)
 import Foreign.C (CTime(..))
 
@@ -74,7 +72,7 @@ getHTTPContent fs p = do
   closeAct <- newIORef (return ())
 
   let close = join $ readIORef closeAct
-  
+
   let gen off = do
         let req = mkRequest fs p
             req' = req { requestHeaders = h : requestHeaders req }
@@ -112,7 +110,7 @@ toEpochTime = CTime . truncate . utcTimeToPOSIXSeconds
 
 parseHTTPTime :: B8.ByteString -> Maybe UTCTime
 parseHTTPTime bs =
-  msum $ map (\f -> parseTime defaultTimeLocale f s) [rfc822, rfc850, ansiC]
+  msum $ map (\f -> parseTimeM True defaultTimeLocale f s) [rfc822, rfc850, ansiC]
   where
     s = B8.unpack bs
     rfc822 = "%a, %d %b %Y %H:%M:%S %Z"

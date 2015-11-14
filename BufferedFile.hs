@@ -5,7 +5,6 @@ import System.Posix (ByteCount, FileOffset)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Control.Concurrent.MVar
-import Control.Applicative
 
 data BufferedFile = BufferedFile {
   readBufferedFile :: ByteCount -> FileOffset -> IO ByteString,
@@ -38,7 +37,7 @@ readHelper f count lo = go (B.length lo) (lo:) where
             then return . B.splitAt count . B.concat $ dl []
             else do
               chunk <- f
-              let newN = if B.null chunk then count else n + B.length chunk 
+              let newN = if B.null chunk then count else n + B.length chunk
               go newN (dl . (chunk:))
 
 makeBufferedFile :: (FileOffset -> IO (IO ByteString))
@@ -47,7 +46,7 @@ makeBufferedFile :: (FileOffset -> IO (IO ByteString))
 makeBufferedFile gen close = do
   source <- mkReadFunc (fmap toStream . gen) >>= newIORef
   lock <- newMVar ()
-  
+
   let readBuffered count off = withMVar lock $ \() -> do
         ReadFunc f <- readIORef source
         (bs, new) <- f count off
