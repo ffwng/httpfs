@@ -5,6 +5,7 @@ import Types
 import MemCache
 import BufferedFile
 
+import Data.Maybe
 import Data.Monoid
 import Data.Word
 import Data.IORef
@@ -95,12 +96,13 @@ processDirResponse fs p _ = do
 processFileResponse :: FS -> FilePath -> Response a -> IO Entry
 processFileResponse fs p res = do
   let headers = responseHeaders res
-  case (,,) <$> lookup "Content-Length" headers
-       <*> lookup "Accept-Ranges" headers
-       <*> lookup "Last-Modified" headers of
-    Just (s, "bytes", t) | Just s' <- readMaybe (B8.unpack s)
-                         , Just t' <- parseHTTPTime t -> do
-      let entry = File (toEpochTime t') s'
+      size = fromMaybe 0 $ lookup "Content-Length" headers
+                           >>= readMaybe . B8.unpack
+  --case (,) <$> lookup "Accept-Ranges" headers
+  --         <*> lookup "Last-Modified" headers of
+  case lookup "Last-Modified" headers of
+    Just t | Just t' <- parseHTTPTime t -> do
+      let entry = File (toEpochTime t') size
       insert (cache fs) p (Right entry)
       return entry
     _ -> error "invalid file response"

@@ -5,12 +5,15 @@ import Data.Monoid
 import Control.Applicative
 import Options.Applicative
 
+type BasicAuth = (B.ByteString, B.ByteString)
+
 data CmdArgs = CmdArgs {
   disableCertificateValidation :: Bool,
-  basicAuth :: Maybe (B.ByteString, B.ByteString),
+  basicAuth :: Maybe BasicAuth,
   baseUrl :: String,
   mountPoint :: String,
-  otherArgs :: [String]
+  otherArgs :: [String],
+  linkXPath :: String
   }
 
 cmdArgs :: Parser CmdArgs
@@ -29,6 +32,7 @@ cmdArgs = CmdArgs
                           <> help "Mount point for FUSE" )
           <*> many (strArgument $ metavar "ARGS..."
                     <> help "Additional FUSE arguments like -f -d (use --)")
+          <*> strOption (long "xpath" <> help "XPath for <a> elements")
 
 readAuth :: String -> Either String (B.ByteString, B.ByteString)
 readAuth s = case B.split ':' $ B.pack s of

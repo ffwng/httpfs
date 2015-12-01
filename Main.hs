@@ -4,6 +4,7 @@ import FuseOps
 import HTTPFS
 import Common
 import CommandLine
+import Parser
 
 import Control.Monad
 import Network.HTTP.Types
@@ -26,9 +27,18 @@ mkContext novalidate = do
   c <- context
   contextSetDefaultCiphers c
   contextSetCADirectory c "/etc/ssl/certs"
-  when (not novalidate) $
+  unless novalidate $
     contextSetVerificationMode c $ VerifyPeer False False Nothing
   return c
+
+mkFS :: IO SSLContext -> Maybe BasicAuth -> String -> IO FS
+mkFS ctx auth url = do
+  let settings = opensslManagerSettings ctx
+      requestAdj = case auth of
+        Nothing -> id
+        Just (u, p) -> applyBasicAuth u p
+
+  newFS requestAdj url settings
 
 main :: IO ()
 main = withOpenSSL $ do
@@ -37,15 +47,11 @@ main = withOpenSSL $ do
                <> progDesc "A FUSE file system for webserver directory listings" )
   args <- execParser opts
 
-  let settings = opensslManagerSettings $ mkContext novalidate
-      novalidate = disableCertificateValidation args
-      requestAdj = case basicAuth args of
-        Nothing -> id
-        Just (u, p) -> applyBasicAuth u p
-
-  fs <- newFS requestAdj (baseUrl args) settings
+  let ctx = mkContext $ disableCertificateValidation args
+  fs <- mkFS ctx (basicAuth args) (baseUrl args)
+  
   checkServer fs
-  parse <- guessServer fs
+  let parse = xpathParser $ linkXPath args
 
   let fuseArgs = mountPoint args : otherArgs args
   p <- getProgName

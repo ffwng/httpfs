@@ -5,36 +5,19 @@ import FuseOps
 import HTTPFS
 import Types
 import MemCache
-import qualified Nginx as N
-import qualified Apache as A
+import Parser
 
-import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy.Char8 as BL
-import Data.List hiding (insert)
 import Control.Monad (forM_)
-import Text.XML.HXT.Core
-import Network.HTTP.Types
-import Network.HTTP.Client
 
-stdOps :: (BL.ByteString -> IO [(String, Either EntryType Entry)]) -> FS -> Ops
-stdOps parse fs = Ops entries entry content where
+stdOps :: Parser -> FS -> Ops
+stdOps parser fs = Ops entries entry content where
   entries p = do
     bs <- getHTTPDirectoryHTML fs p
-    l <- parse bs
+    l <- parseByteString parser bs
     forM_ l $ \(n, e) -> cacheBetter (cache fs) (combine p n) e
     return $ map (fmap $ either id entryType) l
   entry = getHTTPEntry fs
   content = getHTTPContent fs
-
-guessServer :: FS -> IO (BL.ByteString -> IO [(FilePath, Either EntryType Entry)])
-guessServer fs = do
-  let req = mkRequest fs "/"
-      req' = req { method = methodHead }
-  res <- httpNoBody req' (manager fs)
-  let parse = case lookup "Server" (responseHeaders res) of
-        Just s | "nginx" `isInfixOf` B.unpack s -> N.parse
-        _ -> A.parse
-  return $ parseByteString parse
 
 combine :: FilePath -> FilePath -> FilePath
 combine "" p = p
@@ -48,10 +31,3 @@ cacheBetter mc a e@(Left _) = do
   case cached of
     Just (Right _) -> return ()
     _ -> insert mc a e
-
-parseByteString :: IOSLA (XIOState ()) XmlTree c -> BL.ByteString -> IO [c]
-parseByteString parse bs = do
-  let bs' = BL.unpack bs
-      doc = readString [withValidate no, withParseHTML yes, withWarnings no] bs'
-
-  runX (doc >>> parse)
