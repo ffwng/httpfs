@@ -32,7 +32,7 @@ cmdArgs = CmdArgs
                           <> help "Mount point for FUSE" )
           <*> many (strArgument $ metavar "ARGS..."
                     <> help "Additional FUSE arguments like -f -d (use --)")
-          <*> strOption (long "xpath" <> help "XPath for <a> elements")
+          <*> strOption (long "xpath" <> help "XPath for <a> elements (default //a)" <> value "//a")
 
 readAuth :: String -> Either String (B.ByteString, B.ByteString)
 readAuth s = case B.split ':' $ B.pack s of
