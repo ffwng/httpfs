@@ -26,8 +26,7 @@ query :: Ord k => MemCache k a -> k -> IO (Maybe a)
 query mc@(MemCache _ ref) k = do
   m <- readIORef ref
   t <- epochTime
-  let res = M.lookup k m
-  case res of
+  case M.lookup k m of
     Nothing -> return Nothing
     Just (t', _) | t' < t -> delete mc k >> return Nothing
     Just (_, b) -> return (Just b)
