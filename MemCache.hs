@@ -10,14 +10,14 @@ data MemCache k a = MemCache EpochTime (IORef (M.Map k (EpochTime, a)))
 newMemCache :: Int -> IO (MemCache k a)
 newMemCache d = MemCache (fromIntegral d) <$> newIORef M.empty
 
-insertWith :: Ord k => MemCache k a -> (a -> a -> a) -> k -> a -> IO ()
-insertWith (MemCache d ref) f k a = do
+insertWith :: Ord k => (a -> a -> a) -> MemCache k a -> k -> a -> IO ()
+insertWith f (MemCache d ref) k a = do
   t <- epochTime
   let f' (tNew, aNew) (_, aOld) = (tNew, f aNew aOld)
   modifyIORef ref $ M.insertWith f' k (t + d, a)
 
 insert :: Ord k => MemCache k a -> k -> a -> IO ()
-insert mc = insertWith mc const
+insert = insertWith const
 
 delete :: Ord k => MemCache k a -> k -> IO ()
 delete (MemCache _ ref) = modifyIORef ref . M.delete
