@@ -5,25 +5,29 @@ import Data.IORef
 import System.Posix.Types
 import System.Posix.Time
 
-data MemCache a b = MemCache EpochTime (IORef (M.Map a (EpochTime, b)))
+data MemCache k a = MemCache EpochTime (IORef (M.Map k (EpochTime, a)))
 
-newMemCache :: Int -> IO (MemCache a b)
+newMemCache :: Int -> IO (MemCache k a)
 newMemCache d = MemCache (fromIntegral d) <$> newIORef M.empty
 
-insert :: Ord a => MemCache a b -> a -> b -> IO ()
-insert (MemCache d ref) a b = do
+insertWith :: Ord k => MemCache k a -> (a -> a -> a) -> k -> a -> IO ()
+insertWith (MemCache d ref) f k a = do
   t <- epochTime
-  modifyIORef ref $ M.insert a (t + d, b)
+  let f' (tNew, aNew) (_, aOld) = (tNew, f aNew aOld)
+  modifyIORef ref $ M.insertWith f' k (t + d, a)
 
-delete :: Ord a => MemCache a b -> a -> IO ()
-delete (MemCache _ ref) a = modifyIORef ref $ M.delete a
+insert :: Ord k => MemCache k a -> k -> a -> IO ()
+insert mc = insertWith mc const
 
-query :: Ord a => MemCache a b -> a -> IO (Maybe b)
-query mc@(MemCache _ ref) a = do
+delete :: Ord k => MemCache k a -> k -> IO ()
+delete (MemCache _ ref) = modifyIORef ref . M.delete
+
+query :: Ord k => MemCache k a -> k -> IO (Maybe a)
+query mc@(MemCache _ ref) k = do
   m <- readIORef ref
   t <- epochTime
-  let res = M.lookup a m
+  let res = M.lookup k m
   case res of
     Nothing -> return Nothing
-    Just (t', _) | t' < t -> delete mc a >> return Nothing
+    Just (t', _) | t' < t -> delete mc k >> return Nothing
     Just (_, b) -> return (Just b)
