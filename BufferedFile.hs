@@ -20,7 +20,7 @@ mkReadFunc gen = func 0 <$> gen 0 where
                    then return stream
                    else gen off
     (bs, newStream) <- readAtMost inputStream count
-    return (bs, func (off + fromIntegral count) newStream)
+    return (bs, func (off + fromIntegral (B.length bs)) newStream)
 
 
 data Stream = Stream { readAtMost :: ByteCount -> IO (ByteString, Stream) }
