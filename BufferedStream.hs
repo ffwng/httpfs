@@ -1,4 +1,4 @@
-module BufferedFile where
+module BufferedStream where
 
 import Data.IORef
 import System.Posix (ByteCount, FileOffset)
@@ -6,9 +6,9 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Control.Concurrent.MVar
 
-data BufferedFile = BufferedFile {
-  readBufferedFile :: ByteCount -> FileOffset -> IO ByteString,
-  closeBufferedFile :: IO ()
+data BufferedStream = BufferedStream {
+  readBufferedStream :: ByteCount -> FileOffset -> IO ByteString,
+  closeBufferedStream :: IO ()
   }
 
 data ReadFunc = ReadFunc (ByteCount -> FileOffset -> IO (ByteString, ReadFunc))
@@ -40,10 +40,10 @@ readHelper f count lo = go (B.length lo) (lo:) where
               let newN = if B.null chunk then count else n + B.length chunk
               go newN (dl . (chunk:))
 
-makeBufferedFile :: (FileOffset -> IO (IO ByteString))
-                 -> IO ()
-                 -> IO BufferedFile
-makeBufferedFile gen close = do
+makeBufferedStream :: (FileOffset -> IO (IO ByteString))
+                   -> IO ()
+                   -> IO BufferedStream
+makeBufferedStream gen close = do
   source <- mkReadFunc (fmap toStream . gen) >>= newIORef
   lock <- newMVar ()
 
@@ -53,4 +53,4 @@ makeBufferedFile gen close = do
         writeIORef source new
         return bs
 
-  return $ BufferedFile readBuffered close
+  return $ BufferedStream readBuffered close

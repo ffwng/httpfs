@@ -3,7 +3,7 @@ module HTTPFS where
 
 import Types
 import MemCache
-import BufferedFile
+import BufferedStream
 
 import Data.Maybe
 import Data.Monoid
@@ -68,7 +68,7 @@ getHTTPEntry fs p = do
     is404 (StatusCodeException s _ _) | s == status404 = Just ()
     is404 _ = Nothing
 
-getHTTPContent :: FS -> FilePath -> IO BufferedFile
+getHTTPContent :: FS -> FilePath -> IO BufferedStream
 getHTTPContent fs p = do
   closeAct <- newIORef (return ())
 
@@ -85,7 +85,7 @@ getHTTPContent fs p = do
 
         return $ brRead (responseBody res)
 
-  makeBufferedFile gen close
+  makeBufferedStream gen close
 
 processDirResponse :: FS -> FilePath -> Response a -> IO Entry
 processDirResponse fs p _ = do

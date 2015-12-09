@@ -3,7 +3,7 @@ module FuseOps where
 
 import Types
 import Stat
-import BufferedFile
+import BufferedStream
 
 import System.Fuse hiding (EntryType)
 import System.Posix.Types
@@ -12,7 +12,7 @@ import Data.ByteString (ByteString)
 data Ops = Ops
            { getEntries :: FilePath -> IO [(EntryName, EntryType)]
            , getEntry :: FilePath -> IO Entry
-           , getContent :: FilePath -> IO BufferedFile
+           , getContent :: FilePath -> IO BufferedStream
            }
 
 myGetFileStat :: Ops -> FilePath -> IO (Either Errno FileStat)
@@ -23,19 +23,19 @@ myGetFileStat o f = do
     else Right . entryToFileStat ctx <$> getEntry o f
 
 myOpen :: Ops -> FilePath -> OpenMode -> OpenFileFlags
-       -> IO (Either Errno BufferedFile)
+       -> IO (Either Errno BufferedStream)
 myOpen o p m _ = case m of
   ReadOnly -> do
     bf <- getContent o p
     return $ Right bf
   _ -> return $ Left ePERM
 
-myRead :: Ops -> FilePath -> BufferedFile -> ByteCount -> FileOffset
+myRead :: Ops -> FilePath -> BufferedStream -> ByteCount -> FileOffset
        -> IO (Either Errno ByteString)
-myRead _ _ bf bc fo = Right <$> readBufferedFile bf bc fo
+myRead _ _ bf bc fo = Right <$> readBufferedStream bf bc fo
 
-myRelease :: FilePath -> BufferedFile -> IO ()
-myRelease _ = closeBufferedFile
+myRelease :: FilePath -> BufferedStream -> IO ()
+myRelease _ = closeBufferedStream
 
 myOpenDirectory :: Ops -> FilePath -> IO Errno
 myOpenDirectory _ _ = return eOK
@@ -60,7 +60,7 @@ getFileSystemStats _ = return $ Right FileSystemStats
   , fsStatMaxNameLength = 255 -- SEEMS SMALL?
   }
 
-myFuseOperations :: Ops -> FuseOperations BufferedFile
+myFuseOperations :: Ops -> FuseOperations BufferedStream
 myFuseOperations o = defaultFuseOps
                      { fuseGetFileStat = myGetFileStat o
                      , fuseOpen = myOpen o
