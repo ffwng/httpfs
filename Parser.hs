@@ -11,26 +11,26 @@ import Text.XML.HXT.XPath.Arrows
 import Network.URI
 
 
-newtype Parser = Parser (IOSLA (XIOState ()) XmlTree (EntryName, Either EntryType Entry))
+newtype Parser = Parser (IOSLA (XIOState ()) XmlTree (EntryName, Entry))
 
 xpathParser :: String -> Parser
 xpathParser p = Parser $ getXPathTreesInDoc p >>> entries
 
-parseByteString :: Parser -> BL.ByteString -> IO [(EntryName, Either EntryType Entry)]
+parseByteString :: Parser -> BL.ByteString -> IO [(EntryName, Entry)]
 parseByteString (Parser parse) bs = do
   let bs' = BL.unpack bs
       doc = readString [withValidate no, withParseHTML yes, withWarnings no] bs'
 
   runX (doc >>> parse)
 
-entries :: ArrowXml a => a XmlTree (EntryName, Either EntryType Entry)
+entries :: ArrowXml a => a XmlTree (EntryName, Entry)
 entries = getAttrValue0 "href" >>> isA isValid >>> arr (mkEntry . unEscapeString) where
 
-mkEntry :: String -> (EntryName, Either EntryType Entry)
-mkEntry "" = ("", Left FileType)
+mkEntry :: String -> (EntryName, Entry)
+mkEntry "" = ("", IncompleteFile)
 mkEntry str = case splitLast str of
-  (name, '/') -> (name, Right Dir)
-  _ -> (str, Left FileType)
+  (name, '/') -> (name, Dir)
+  _ -> (str, IncompleteFile)
 
 splitLast :: [a] -> ([a], a)
 splitLast [] = error "splitLast"

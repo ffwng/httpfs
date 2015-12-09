@@ -8,9 +8,10 @@ import BufferedStream
 import System.Fuse hiding (EntryType)
 import System.Posix.Types
 import Data.ByteString (ByteString)
+import Data.Maybe
 
 data Ops = Ops
-           { getEntries :: FilePath -> IO [(EntryName, EntryType)]
+           { getEntries :: FilePath -> IO [(EntryName, Entry)]
            , getEntry :: FilePath -> IO Entry
            , getContent :: FilePath -> IO BufferedStream
            }
@@ -46,7 +47,7 @@ defaultStats ctx = [(".", dirStat ctx 0), ("..", dirStat ctx 0)]
 myReadDirectory :: Ops -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 myReadDirectory o f = do
   ctx <- getFuseContext
-  Right . (\l -> defaultStats ctx ++ map (fmap $ entryTypeToFileStat ctx) l)
+  Right . (\l -> defaultStats ctx ++ map (fmap $ entryToFileStat ctx) l)
     <$> getEntries o f
 
 getFileSystemStats :: String -> IO (Either Errno FileSystemStats)
@@ -71,13 +72,10 @@ myFuseOperations o = defaultFuseOps
                      , fuseGetFileSystemStats = getFileSystemStats
                      }
 
-entryTypeToFileStat :: FuseContext -> EntryType -> FileStat
-entryTypeToFileStat ctx = go
-  where go DirType = dirStat ctx 0
-        go FileType = fileStat ctx 0 (0 :: Int)
-        -- actual values are ignored and real values are obtained with stat
-
 entryToFileStat :: FuseContext -> Entry -> FileStat
 entryToFileStat ctx = go
   where go Dir = dirStat ctx 0
-        go (File t s) = fileStat ctx t s
+        go IncompleteFile = fStat Nothing Nothing
+        go (File t s) = fStat t s
+
+        fStat t s = fileStat ctx (fromMaybe 0 t) (fromMaybe 0 s)

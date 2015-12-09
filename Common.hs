@@ -14,8 +14,8 @@ stdOps parser fs = Ops entries entry content where
   entries p = do
     bs <- getHTTPDirectoryHTML fs p
     l <- parseByteString parser bs
-    forM_ l $ \(n, e) -> cacheBetter (cache fs) (combine p n) e
-    return $ map (fmap $ either id entryType) l
+    --forM_ l $ \(n, e) -> cacheBetter (cache fs) (combine p n) e
+    return l
   entry = getHTTPEntry fs
   content = getHTTPContent fs
 

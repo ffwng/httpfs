@@ -2,7 +2,7 @@ module Stat where
 
 import System.Fuse
 import System.Posix.Files
-import System.Posix (EpochTime)
+import System.Posix (EpochTime, FileOffset)
 
 dirStat :: FuseContext -> EpochTime -> FileStat
 dirStat ctx t = FileStat {
@@ -26,7 +26,7 @@ dirStat ctx t = FileStat {
     , statStatusChangeTime = t
   }
 
-fileStat :: Integral a => FuseContext -> EpochTime -> a -> FileStat
+fileStat :: FuseContext -> EpochTime -> FileOffset -> FileStat
 fileStat ctx t size = FileStat {
   statEntryType = RegularFile
   , statFileMode = foldr1 unionFileModes
@@ -39,8 +39,8 @@ fileStat ctx t size = FileStat {
   , statFileOwner = fuseCtxUserID ctx
   , statFileGroup = fuseCtxGroupID ctx
   , statSpecialDeviceID = 0
-  , statFileSize = fromIntegral size
-  , statBlocks = calcBlocks $ fromIntegral size
+  , statFileSize = size
+  , statBlocks = fromIntegral $ calcBlocks size
   , statAccessTime = t
   , statModificationTime = t
   , statStatusChangeTime = t

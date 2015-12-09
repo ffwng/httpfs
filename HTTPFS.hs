@@ -5,7 +5,6 @@ import Types
 import MemCache
 import BufferedStream
 
-import Data.Maybe
 import Data.Monoid
 import Data.Word
 import Data.IORef
@@ -22,7 +21,7 @@ import Text.Read
 import System.Posix (EpochTime)
 import Foreign.C (CTime(..))
 
-type Cache = MemCache FilePath (Either EntryType Entry)
+type Cache = MemCache FilePath Entry
 
 defaultTimeout :: Int
 defaultTimeout = 600
@@ -53,12 +52,8 @@ getHTTPEntry :: FS -> FilePath -> IO Entry
 getHTTPEntry fs p = do
   cached <- query (cache fs) p
   case cached of
-    Just (Right e) -> return e
-    Just (Left t) -> do
-      let (p', process) = case t of
-            FileType -> (p, processFileResponse)
-            DirType -> (p ++ "/", processDirResponse)
-      requestHead fs p' >>= process fs p
+    Just IncompleteFile -> requestHead fs p >>= processFileResponse fs p
+    Just e -> return e
     Nothing -> do
       dirRes <- tryJust is404 $ requestHead fs (p ++ "/")
       case dirRes of
@@ -90,22 +85,18 @@ getHTTPContent fs p = do
 processDirResponse :: FS -> FilePath -> Response a -> IO Entry
 processDirResponse fs p _ = do
   let entry = Dir
-  insert (cache fs) p (Right entry)
+  insert (cache fs) p entry
   return entry
 
 processFileResponse :: FS -> FilePath -> Response a -> IO Entry
 processFileResponse fs p res = do
   let headers = responseHeaders res
-      size = fromMaybe 0 $ lookup "Content-Length" headers
-                           >>= readMaybe . B8.unpack
-  --case (,) <$> lookup "Accept-Ranges" headers
-  --         <*> lookup "Last-Modified" headers of
-  case lookup "Last-Modified" headers of
-    Just t | Just t' <- parseHTTPTime t -> do
-      let entry = File (toEpochTime t') size
-      insert (cache fs) p (Right entry)
-      return entry
-    _ -> error "invalid file response"
+      size = lookup "Content-Length" headers >>= readMaybe . B8.unpack
+      time = fmap toEpochTime $ lookup "Last-Modified" headers >>= parseHTTPTime
+      entry = File time size
+
+  insert (cache fs) p entry
+  return entry
 
 toEpochTime :: UTCTime -> EpochTime
 toEpochTime = CTime . truncate . utcTimeToPOSIXSeconds
