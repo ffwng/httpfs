@@ -54,7 +54,7 @@ main = withOpenSSL $ do
 
   let ops = Ops (getHTTPDirectoryEntries fs) (getHTTPEntry fs) (getHTTPContent fs)
 
-  let fuseArgs = mountPoint args : otherArgs args
+  let fuseArgs = mountPoint args : "-o" : "direct_io" : otherArgs args
   progName <- getProgName
   fuseRun progName fuseArgs (myFuseOperations ops) httpExceptionHandler
 
