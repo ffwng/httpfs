@@ -80,6 +80,7 @@ getHTTPContent fs p = do
             start = fromIntegral off :: Word64
         close -- close previous request
         res <- responseOpen req' (manager fs)
+        _ <- processFileResponse fs p res
         writeIORef closeAct (responseClose res)
 
         return $ brRead (responseBody res)
