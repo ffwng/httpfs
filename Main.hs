@@ -2,7 +2,6 @@ module Main where
 
 import FuseOps
 import HTTPFS
-import Common
 import CommandLine
 import Parser
 
@@ -13,7 +12,7 @@ import Network.HTTP.Client.OpenSSL
 import OpenSSL.Session
 import System.Fuse hiding (EntryType)
 import System.Environment
-import Options.Applicative
+import Options.Applicative hiding (Parser)
 import Control.Exception
 
 checkServer :: FS -> IO ()
@@ -31,14 +30,14 @@ mkContext novalidate = do
     contextSetVerificationMode c $ VerifyPeer False False Nothing
   return c
 
-mkFS :: IO SSLContext -> Maybe BasicAuth -> String -> IO FS
-mkFS ctx auth url = do
+mkFS :: IO SSLContext -> Maybe BasicAuth -> Parser -> String -> IO FS
+mkFS ctx auth p url = do
   let settings = opensslManagerSettings ctx
       requestAdj = case auth of
         Nothing -> id
-        Just (u, p) -> applyBasicAuth u p
+        Just (u, pw) -> applyBasicAuth u pw
 
-  newFS requestAdj url settings
+  newFS requestAdj p url settings
 
 main :: IO ()
 main = withOpenSSL $ do
@@ -48,14 +47,16 @@ main = withOpenSSL $ do
   args <- execParser opts
 
   let ctx = mkContext $ disableCertificateValidation args
-  fs <- mkFS ctx (basicAuth args) (baseUrl args)
-  
+      p = xpathParser $ linkXPath args
+  fs <- mkFS ctx (basicAuth args) p (baseUrl args)
+
   checkServer fs
-  let parse = xpathParser $ linkXPath args
+
+  let ops = Ops (getHTTPDirectoryEntries fs) (getHTTPEntry fs) (getHTTPContent fs)
 
   let fuseArgs = mountPoint args : otherArgs args
-  p <- getProgName
-  fuseRun p fuseArgs (myFuseOperations $ stdOps parse fs) httpExceptionHandler
+  progName <- getProgName
+  fuseRun progName fuseArgs (myFuseOperations ops) httpExceptionHandler
 
 httpExceptionHandler :: SomeException -> IO Errno
 httpExceptionHandler e = case fromException e of

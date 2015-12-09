@@ -4,6 +4,7 @@ module HTTPFS where
 import Types
 import MemCache
 import BufferedStream
+import Parser
 
 import Data.Monoid
 import Data.Word
@@ -11,7 +12,6 @@ import Data.IORef
 import Data.Time
 import Data.Time.Clock.POSIX
 import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Lazy as BL
 import Control.Monad
 import Control.Exception
 import Network.HTTP.Types
@@ -29,24 +29,28 @@ defaultTimeout = 600
 data FS = FS {
   mkRequest :: FilePath -> Request,
   manager :: Manager,
+  entryParser :: Parser,
   cache :: Cache
   }
 
-newFS :: (Request -> Request) -> String -> ManagerSettings -> IO FS
-newFS f baseurl manset = do
+newFS :: (Request -> Request) -> Parser -> String -> ManagerSettings -> IO FS
+newFS f p baseurl manset = do
   man <- newManager manset
   reqtempl <- parseUrl baseurl
   let mkReq = makeRequest $ f reqtempl
   mc <- newMemCache defaultTimeout
-  return $ FS mkReq man mc
+  return $ FS mkReq man p mc
 
 
-getHTTPDirectoryHTML :: FS -> FilePath -> IO BL.ByteString
-getHTTPDirectoryHTML fs p = do
+getHTTPDirectoryEntries :: FS -> FilePath -> IO [(EntryName, Entry)]
+getHTTPDirectoryEntries fs p = do
   let p' = p ++ "/"
   res <- httpLbs (mkRequest fs p') (manager fs)
   _ <- processDirResponse fs p res
-  return $ responseBody res
+  let content = responseBody res
+  entries <- parseByteString (entryParser fs) content
+  forM_ entries $ \(n, e) -> insertWith betterEntry (cache fs) (p' ++ n) e
+  return entries
 
 getHTTPEntry :: FS -> FilePath -> IO Entry
 getHTTPEntry fs p = do
