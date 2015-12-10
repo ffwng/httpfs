@@ -33,11 +33,11 @@ mkContext novalidate = do
 mkFS :: IO SSLContext -> Maybe BasicAuth -> Parser -> String -> IO FS
 mkFS ctx auth p url = do
   let settings = opensslManagerSettings ctx
-      requestAdj = case auth of
-        Nothing -> id
-        Just (u, pw) -> applyBasicAuth u pw
+      settingsWithAuth = case auth of
+        Nothing -> settings
+        Just (u, pw) -> settings { managerModifyRequest = return . applyBasicAuth u pw }
 
-  newFS requestAdj p url settings
+  newFS p url settingsWithAuth
 
 main :: IO ()
 main = withOpenSSL $ do
