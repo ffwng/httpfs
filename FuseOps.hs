@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module FuseOps where
 
-import Types
+import HTTPFS
 import Stat
 import BufferedStream
 
@@ -10,45 +10,39 @@ import System.Posix.Types
 import Data.ByteString (ByteString)
 import Data.Maybe
 
-data Ops = Ops
-           { getEntries :: FilePath -> IO [(EntryName, Entry)]
-           , getEntry :: FilePath -> IO Entry
-           , getContent :: FilePath -> IO BufferedStream
-           }
-
-myGetFileStat :: Ops -> FilePath -> IO (Either Errno FileStat)
+myGetFileStat :: FS -> FilePath -> IO (Either Errno FileStat)
 myGetFileStat o f = do
   ctx <- getFuseContext
   if f == "/" || f == "." || f == ".."
     then return (Right $ dirStat ctx 0)
-    else Right . entryToFileStat ctx <$> getEntry o f
+    else Right . entryToFileStat ctx <$> getHTTPEntry o f
 
-myOpen :: Ops -> FilePath -> OpenMode -> OpenFileFlags
+myOpen :: FS -> FilePath -> OpenMode -> OpenFileFlags
        -> IO (Either Errno BufferedStream)
 myOpen o p m _ = case m of
   ReadOnly -> do
-    bf <- getContent o p
+    bf <- getHTTPContent o p
     return $ Right bf
   _ -> return $ Left ePERM
 
-myRead :: Ops -> FilePath -> BufferedStream -> ByteCount -> FileOffset
+myRead :: FS -> FilePath -> BufferedStream -> ByteCount -> FileOffset
        -> IO (Either Errno ByteString)
 myRead _ _ bf bc fo = Right <$> readBufferedStream bf bc fo
 
 myRelease :: FilePath -> BufferedStream -> IO ()
 myRelease _ = closeBufferedStream
 
-myOpenDirectory :: Ops -> FilePath -> IO Errno
+myOpenDirectory :: FS -> FilePath -> IO Errno
 myOpenDirectory _ _ = return eOK
 
 defaultStats :: FuseContext -> [(FilePath, FileStat)]
 defaultStats ctx = [(".", dirStat ctx 0), ("..", dirStat ctx 0)]
 
-myReadDirectory :: Ops -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
+myReadDirectory :: FS -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 myReadDirectory o f = do
   ctx <- getFuseContext
   Right . (\l -> defaultStats ctx ++ map (fmap $ entryToFileStat ctx) l)
-    <$> getEntries o f
+    <$> getHTTPDirectoryEntries o f
 
 getFileSystemStats :: String -> IO (Either Errno FileSystemStats)
 getFileSystemStats _ = return $ Right FileSystemStats
@@ -61,7 +55,7 @@ getFileSystemStats _ = return $ Right FileSystemStats
   , fsStatMaxNameLength = 255 -- SEEMS SMALL?
   }
 
-myFuseOperations :: Ops -> FuseOperations BufferedStream
+myFuseOperations :: FS -> FuseOperations BufferedStream
 myFuseOperations o = defaultFuseOps
                      { fuseGetFileStat = myGetFileStat o
                      , fuseOpen = myOpen o

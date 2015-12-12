@@ -1,15 +1,23 @@
 module Parser (
+  EntryName, EntryDate, EntrySize, Entry(..),
   Parser, xpathParser,
   parseByteString
 ) where
-
-import Types
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Text.XML.HXT.Core
 import Text.XML.HXT.XPath.Arrows
 import Network.URI
+import System.Posix.Types
 
+type EntryName = String
+type EntryDate = EpochTime
+type EntrySize = FileOffset
+
+data Entry = Dir
+           | IncompleteFile
+           | File (Maybe EntryDate) (Maybe EntrySize)
+           deriving (Show, Eq, Ord)
 
 newtype Parser = Parser (IOSLA (XIOState ()) XmlTree (EntryName, Entry))
 

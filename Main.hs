@@ -18,8 +18,7 @@ import qualified Data.ByteString.Char8 as B
 
 checkServer :: FS -> IO ()
 checkServer fs = do
-  let req = (mkRequest fs "/") { method = methodHead }
-  _ <- httpNoBody req (manager fs) -- throws exception on error
+  _ <- getHTTPEntry fs "/" -- throws exception on error
   return ()
 
 mkContext :: Bool -> IO SSLContext
@@ -58,11 +57,9 @@ main = withOpenSSL $ do
 
   checkServer fs
 
-  let ops = Ops (getHTTPDirectoryEntries fs) (getHTTPEntry fs) (getHTTPContent fs)
-
   let fuseArgs = mountPoint args : "-o" : "direct_io" : otherArgs args
   progName <- getProgName
-  fuseRun progName fuseArgs (myFuseOperations ops) httpExceptionHandler
+  fuseRun progName fuseArgs (myFuseOperations fs) httpExceptionHandler
 
 httpExceptionHandler :: SomeException -> IO Errno
 httpExceptionHandler e = case fromException e of

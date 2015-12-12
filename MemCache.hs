@@ -1,4 +1,10 @@
-module MemCache where
+module MemCache (
+  MemCache,
+  newMemCache,
+  insert, insertWith,
+  delete,
+  query
+) where
 
 import qualified Data.Map.Strict as M
 import Control.Concurrent.STM

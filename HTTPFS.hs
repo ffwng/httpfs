@@ -1,7 +1,13 @@
 {-# LANGUAGE TupleSections, OverloadedStrings #-}
-module HTTPFS where
+module HTTPFS (
+  EntryName, EntryDate, EntrySize, Entry(..),
+  FS,
+  newFS,
+  getHTTPDirectoryEntries,
+  getHTTPEntry,
+  getHTTPContent
+) where
 
-import Types
 import MemCache
 import BufferedStream
 import Parser
@@ -131,15 +137,6 @@ requestHead :: FS -> FilePath -> IO (Response ())
 requestHead fs p = do
   let req = mkRequest fs p
   httpNoBody (req { method = methodHead }) (manager fs)
-
-tryActions :: (a -> Bool) -> [IO a] -> IO (Maybe a)
-tryActions f = go where
-  go [] = return Nothing
-  go (a:as) = do
-    res <- a
-    if f res
-      then return $ Just res
-      else go as
 
 mkDir :: String -> String
 mkDir "/" = "/"
