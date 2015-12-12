@@ -21,7 +21,10 @@ import Text.Read
 import System.Posix (EpochTime)
 import Foreign.C (CTime(..))
 
-type Cache = MemCache FilePath Entry
+data CacheEntry = NotFound HttpException | Found Entry
+  deriving (Show)
+
+type Cache = MemCache FilePath CacheEntry
 
 defaultTimeout :: Int
 defaultTimeout = 600
@@ -45,28 +48,27 @@ newFS mkReq p manset = do
 getHTTPDirectoryEntries :: FS -> FilePath -> IO [(EntryName, Entry)]
 getHTTPDirectoryEntries fs p = do
   let p' = mkDir p
-  res <- httpLbs (mkRequest fs p') (manager fs)
-  _ <- processDirResponse fs p res
+  (_, res) <- cacheResponse parseDir fs p' $ httpLbs (mkRequest fs p') (manager fs)
   let content = responseBody res
   entries <- parseByteString (entryParser fs) content
-  forM_ entries $ \(n, e) -> insertWith betterEntry (cache fs) (p' ++ n) e
+  forM_ entries $ \(n, e) -> insertWith betterEntry (cache fs) (p' ++ n) (Found e)
   return entries
   where
-    betterEntry :: Entry -> Entry -> Entry
-    betterEntry IncompleteFile e = e
+    betterEntry (Found IncompleteFile) e = e
     betterEntry e _ = e
 
 getHTTPEntry :: FS -> FilePath -> IO Entry
 getHTTPEntry fs p = do
   cached <- query (cache fs) p
   case cached of
-    Just IncompleteFile -> requestHead fs p >>= processFileResponse fs p
-    Just e -> return e
-    Nothing -> do
+    Just (NotFound ex) -> throwIO ex
+    Just (Found IncompleteFile) -> cacheResponse' parseFile fs p $ requestHead fs p
+    Just (Found e) -> return e
+    Nothing -> cacheResponse' id fs p $ do
       dirRes <- tryJust is404 $ requestHead fs (mkDir p)
       case dirRes of
-        Right res -> processDirResponse fs p res
-        Left _ -> requestHead fs p >>= processFileResponse fs p
+        Right res -> return $ parseDir res
+        Left _ -> parseFile <$> requestHead fs p
   where
     is404 (StatusCodeException s _ _) | s == status404 = Just ()
     is404 _ = Nothing
@@ -83,29 +85,35 @@ getHTTPContent fs p = do
             h = ("Range", "bytes=" <> B8.pack (show start) <> "-")
             start = fromIntegral off :: Word64
         close -- close previous request
-        res <- responseOpen req' (manager fs)
-        _ <- processFileResponse fs p res
+        (_, res) <- cacheResponse parseFile fs p $ responseOpen req' (manager fs)
         writeIORef closeAct (responseClose res)
 
         return $ brRead (responseBody res)
 
   makeBufferedStream gen close
 
-processDirResponse :: FS -> FilePath -> Response a -> IO Entry
-processDirResponse fs p _ = do
-  let entry = Dir
-  insert (cache fs) p entry
-  return entry
+cacheResponse' :: (a -> Entry) -> FS -> FilePath -> IO a -> IO Entry
+cacheResponse' f fs p act = fst <$> cacheResponse f fs p act
 
-processFileResponse :: FS -> FilePath -> Response a -> IO Entry
-processFileResponse fs p res = do
+cacheResponse :: (a -> Entry) -> FS -> FilePath -> IO a -> IO (Entry, a)
+cacheResponse f fs p act = do
+  res <- tryJust scEx act
+  case res of
+    Right a -> let e = f a in insert (cache fs) p (Found e) >> return (e, a)
+    Left ex -> insert (cache fs) p (NotFound ex) >> throwIO ex
+  where
+    scEx ex@StatusCodeException {} = Just ex
+    scEx _ = Nothing
+
+parseDir :: Response a -> Entry
+parseDir _ = Dir
+
+parseFile :: Response a -> Entry
+parseFile res =
   let headers = responseHeaders res
       size = lookup "Content-Length" headers >>= readMaybe . B8.unpack
       time = fmap toEpochTime $ lookup "Last-Modified" headers >>= parseHTTPTime
-      entry = File time size
-
-  insert (cache fs) p entry
-  return entry
+  in File time size
 
 toEpochTime :: UTCTime -> EpochTime
 toEpochTime = CTime . truncate . utcTimeToPOSIXSeconds
