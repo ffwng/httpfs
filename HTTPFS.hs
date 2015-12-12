@@ -51,6 +51,10 @@ getHTTPDirectoryEntries fs p = do
   entries <- parseByteString (entryParser fs) content
   forM_ entries $ \(n, e) -> insertWith betterEntry (cache fs) (p' ++ n) e
   return entries
+  where
+    betterEntry :: Entry -> Entry -> Entry
+    betterEntry IncompleteFile e = e
+    betterEntry e _ = e
 
 getHTTPEntry :: FS -> FilePath -> IO Entry
 getHTTPEntry fs p = do
