@@ -21,7 +21,7 @@ import Text.Read
 import System.Posix (EpochTime)
 import Foreign.C (CTime(..))
 
-data CacheEntry = NotFound HttpException | Found Entry
+data CacheEntry = FoundError HttpException | Found Entry
   deriving (Show)
 
 type Cache = MemCache FilePath CacheEntry
@@ -61,7 +61,7 @@ getHTTPEntry :: FS -> FilePath -> IO Entry
 getHTTPEntry fs p = do
   cached <- query (cache fs) p
   case cached of
-    Just (NotFound ex) -> throwIO ex
+    Just (FoundError ex) -> throwIO ex
     Just (Found IncompleteFile) -> cacheResponse' parseFile fs p $ requestHead fs p
     Just (Found e) -> return e
     Nothing -> cacheResponse' id fs p $ do
@@ -100,7 +100,7 @@ cacheResponse f fs p act = do
   res <- tryJust scEx act
   case res of
     Right a -> let e = f a in insert (cache fs) p (Found e) >> return (e, a)
-    Left ex -> insert (cache fs) p (NotFound ex) >> throwIO ex
+    Left ex -> insert (cache fs) p (FoundError ex) >> throwIO ex
   where
     scEx ex@StatusCodeException {} = Just ex
     scEx _ = Nothing
@@ -129,7 +129,6 @@ parseHTTPTime bs =
 
 requestHead :: FS -> FilePath -> IO (Response ())
 requestHead fs p = do
-  --putStrLn $ "request " ++ p
   let req = mkRequest fs p
   httpNoBody (req { method = methodHead }) (manager fs)
 
