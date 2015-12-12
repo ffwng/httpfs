@@ -33,18 +33,18 @@ data FS = FS {
   cache :: Cache
   }
 
-newFS :: Parser -> String -> ManagerSettings -> IO FS
-newFS p baseurl manset = do
+newFS :: (B8.ByteString -> Request) -> Parser -> ManagerSettings -> IO FS
+newFS mkReq p manset = do
+  let mkReq' = mkReq . B8.pack . encode
+      encode = escapeURIString (\c -> isUnreserved c || c == '/')
   man <- newManager manset
-  reqtempl <- parseUrl baseurl
-  let mkReq = makeRequest reqtempl
   mc <- newMemCache defaultTimeout
-  return $ FS mkReq man p mc
+  return $ FS mkReq' man p mc
 
 
 getHTTPDirectoryEntries :: FS -> FilePath -> IO [(EntryName, Entry)]
 getHTTPDirectoryEntries fs p = do
-  let p' = p ++ "/"
+  let p' = mkDir p
   res <- httpLbs (mkRequest fs p') (manager fs)
   _ <- processDirResponse fs p res
   let content = responseBody res
@@ -59,7 +59,7 @@ getHTTPEntry fs p = do
     Just IncompleteFile -> requestHead fs p >>= processFileResponse fs p
     Just e -> return e
     Nothing -> do
-      dirRes <- tryJust is404 $ requestHead fs (p ++ "/")
+      dirRes <- tryJust is404 $ requestHead fs (mkDir p)
       case dirRes of
         Right res -> processDirResponse fs p res
         Left _ -> requestHead fs p >>= processFileResponse fs p
@@ -130,6 +130,6 @@ tryActions f = go where
       then return $ Just res
       else go as
 
-makeRequest :: Request -> FilePath -> Request
-makeRequest templ p = templ { path = path templ <> B8.pack (encode p) } where
-  encode = escapeURIString (\c -> isUnreserved c || c == '/')
+mkDir :: String -> String
+mkDir "/" = "/"
+mkDir p = p ++ "/"

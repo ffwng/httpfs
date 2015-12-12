@@ -14,6 +14,7 @@ import System.Fuse hiding (EntryType)
 import System.Environment
 import Options.Applicative hiding (Parser)
 import Control.Exception
+import qualified Data.ByteString.Char8 as B
 
 checkServer :: FS -> IO ()
 checkServer fs = do
@@ -37,7 +38,12 @@ mkFS ctx auth p url = do
         Nothing -> settings
         Just (u, pw) -> settings { managerModifyRequest = return . applyBasicAuth u pw }
 
-  newFS p url settingsWithAuth
+  req <- parseUrl url
+  let reqPath = path req
+      reqPath' = if B.last reqPath == '/' then B.init reqPath else reqPath
+      mkReq fp = req { path = reqPath' <> fp }
+
+  newFS mkReq p settingsWithAuth
 
 main :: IO ()
 main = withOpenSSL $ do
