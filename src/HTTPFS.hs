@@ -96,7 +96,7 @@ getHTTPContent fs p = do
 
         return $ brRead (responseBody res)
 
-  makeBufferedStream gen close
+  withAutoRestart <$> makeBufferedStream gen close
 
 cacheResponse' :: (a -> Entry) -> FS -> FilePath -> IO a -> IO Entry
 cacheResponse' f fs p act = fst <$> cacheResponse f fs p act

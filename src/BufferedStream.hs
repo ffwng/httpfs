@@ -5,16 +5,18 @@ import System.Posix (ByteCount, FileOffset)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Control.Concurrent.MVar
+import Control.Exception
 
 data BufferedStream = BufferedStream {
   readBufferedStream :: ByteCount -> FileOffset -> IO ByteString,
-  closeBufferedStream :: IO ()
+  closeBufferedStream :: IO (),
+  readWithRestart :: ByteCount -> FileOffset -> IO ByteString
   }
 
 data ReadFunc = ReadFunc (ByteCount -> FileOffset -> IO (ByteString, ReadFunc))
 
-mkReadFunc :: (FileOffset -> IO Stream) -> IO ReadFunc
-mkReadFunc gen = func 0 <$> gen 0 where
+mkReadFunc :: FileOffset -> (FileOffset -> IO Stream) -> IO ReadFunc
+mkReadFunc pos0 gen = func pos0 <$> gen pos0 where
   func pos stream = ReadFunc $ \count off -> do
     inputStream <- if off == pos
                    then return stream
@@ -44,13 +46,24 @@ makeBufferedStream :: (FileOffset -> IO (IO ByteString))
                    -> IO ()
                    -> IO BufferedStream
 makeBufferedStream gen close = do
-  source <- mkReadFunc (fmap toStream . gen) >>= newIORef
+  let mkSource off = mkReadFunc off (fmap toStream . gen)
+
+  source <- mkSource 0 >>= newIORef
   lock <- newMVar ()
 
-  let readBuffered count off = withMVar lock $ \() -> do
-        ReadFunc f <- readIORef source
+  let readSource getSource count off = withMVar lock $ \() -> do
+        ReadFunc f <- getSource
         (bs, new) <- f count off
         writeIORef source new
         return bs
 
-  return $ BufferedStream readBuffered close
+      readBuffered = readSource (readIORef source)
+
+      restartRead count off = readSource (mkSource off) count off
+
+
+  return $ BufferedStream readBuffered close restartRead
+
+withAutoRestart :: BufferedStream -> BufferedStream
+withAutoRestart (BufferedStream f close restartRead) = BufferedStream f' close restartRead where
+  f' count off = f count off `onException` restartRead count off
