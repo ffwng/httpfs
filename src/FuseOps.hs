@@ -68,12 +68,12 @@ myFuseOperations o = defaultFuseOps
 
 entryToFileStat :: FuseContext -> Entry -> FileStat
 entryToFileStat ctx = go
-  where go (Dir _) = dirStat ctx 0
+  where go Dir = dirStat ctx 0
         go (File stats) = fStat stats
 
         fStat (FileStats s t) = fileStat ctx (fromMaybe 0 t) (fromMaybe 0 s)
 
 entryTypeToFileStat :: FuseContext -> EntryType -> FileStat
 entryTypeToFileStat ctx = entryToFileStat ctx . trans
-  where trans DirType = Dir DirectoryStats
+  where trans DirType = Dir
         trans FileType = File (FileStats Nothing Nothing)

@@ -10,13 +10,10 @@ type EntryName = ByteString
 type EntryDate = EpochTime
 type EntrySize = FileOffset
 
-data DirectoryStats = DirectoryStats
-  deriving (Show, Eq, Ord)
-
 data FileStats = FileStats (Maybe EntrySize) (Maybe EntryDate)
   deriving (Show, Eq, Ord)
 
-data Entry = Dir DirectoryStats | File FileStats
+data Entry = Dir | File FileStats
   deriving (Show, Eq, Ord)
 
 data EntryType = DirType | FileType

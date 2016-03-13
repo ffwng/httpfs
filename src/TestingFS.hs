@@ -16,9 +16,9 @@ testingFS = return FS {
 
 testingEntry :: B.ByteString -> Entry
 testingEntry p = case splitPath p of
-  [] -> Dir DirectoryStats
+  [] -> Dir
   l -> case last l of
-    p' | B.head p' == 'd' -> Dir DirectoryStats
+    p' | B.head p' == 'd' -> Dir
     _ -> File $ FileStats (Just 1) (Just 0)
 
 testingDirContent :: B.ByteString -> [(EntryName, EntryType)]

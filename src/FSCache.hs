@@ -17,7 +17,7 @@ data EntryInfo = NotFoundInfo | TypeInfo EntryType | FullInfo Entry (Maybe [(Ent
 toInfo :: Ord t => t -> CacheEntry t -> [(EntryName, EntryType)] -> Maybe EntryInfo
 toInfo tcur e childs = case e of
   NotFound t | valid t -> Just NotFoundInfo
-  DirInfo t ct | valid t -> Just $ FullInfo (Dir DirectoryStats) (cInfo ct)
+  DirInfo t ct | valid t -> Just $ FullInfo Dir (cInfo ct)
   FileInfo t mstats | valid t -> case mstats of
     Just (stats, t') | valid t' -> Just $ FullInfo (File stats) (Just [])
     _ -> Just $ TypeInfo FileType
@@ -60,7 +60,7 @@ fromInfo t p info = case info of
     typeInfo DirType = DirInfo t Nothing
 
     entryInfo (File stats) _ = FileInfo t (Just (stats, t))
-    entryInfo (Dir _) cs = DirInfo t cs
+    entryInfo Dir cs = DirInfo t cs
 
     cInfos = map ((p </>) *** typeInfo)
 

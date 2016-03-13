@@ -55,10 +55,10 @@ getHTTPDirectoryEntries fs p = do
 
 getHTTPEntry :: HTTPFS -> Maybe EntryType -> B.ByteString -> IO Entry
 getHTTPEntry fs (Just FileType) p = File <$> getHTTPFileStats fs p
-getHTTPEntry fs _ p = (Dir <$> getHTTPDirectoryStats fs p) `catch` \NotFoundException -> File <$> getHTTPFileStats fs p
+getHTTPEntry fs _ p = (Dir <$ getHTTPDirectoryStats fs p) `catch` \NotFoundException -> File <$> getHTTPFileStats fs p
 
-getHTTPDirectoryStats :: HTTPFS -> B.ByteString -> IO DirectoryStats
-getHTTPDirectoryStats fs p = parseDirStats <$> requestHead fs (mkDir p)
+getHTTPDirectoryStats :: HTTPFS -> B.ByteString -> IO ()
+getHTTPDirectoryStats fs p = void $ requestHead fs (mkDir p)
 
 getHTTPFileStats :: HTTPFS -> B.ByteString -> IO FileStats
 getHTTPFileStats fs p = parseFileStats <$> requestHead fs p
@@ -84,9 +84,6 @@ getHTTPContent fs newStats p = do
         return $ brRead (responseBody res)
 
   withAutoRestart <$> makeBufferedStream gen close
-
-parseDirStats :: Response a -> DirectoryStats
-parseDirStats _ = DirectoryStats
 
 parseFileStats :: Response a -> FileStats
 parseFileStats res =

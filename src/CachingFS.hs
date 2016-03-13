@@ -60,10 +60,10 @@ getCachedDirectoryEntries delay cache fs p = do
   res <- lookupCache cache p
   case res of
     Just NotFoundInfo -> throwIO NotFoundException
-    Just (FullInfo (Dir _) (Just cs)) -> return cs
+    Just (FullInfo Dir (Just cs)) -> return cs
     _ -> do
       cs <- getDirectoryEntries fs p `onNotFound` cacheInfo delay cache p NotFoundInfo
-      cacheInfo delay cache p (FullInfo (Dir DirectoryStats) (Just cs))
+      cacheInfo delay cache p (FullInfo Dir (Just cs))
       return cs
 
 onNotFound :: IO a -> IO b -> IO a

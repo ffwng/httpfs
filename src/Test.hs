@@ -16,7 +16,7 @@ traverseFS fs = goDir "" where
     e <- getEntry fs Nothing p
     case e of
       File (FileStats (Just s) _) -> return s
-      Dir _ -> goDir p
+      Dir -> goDir p
       _ -> return 0
 
   goDir p = do
