@@ -1,6 +1,7 @@
 module Main where
 
 import FuseOps
+import FS
 import HTTPFS
 import CommandLine
 import Parser
@@ -10,7 +11,7 @@ import Network.HTTP.Types
 import Network.HTTP.Client
 import Network.HTTP.Client.OpenSSL
 import OpenSSL.Session
-import System.Fuse hiding (EntryType)
+import System.Fuse.ByteString hiding (EntryType)
 import System.Environment
 import Options.Applicative hiding (Parser)
 import Control.Exception
@@ -63,6 +64,5 @@ main = withOpenSSL $ do
 
 httpExceptionHandler :: SomeException -> IO Errno
 httpExceptionHandler e = case fromException e of
-  Just (StatusCodeException s _ _) | s == status404 -> return eNOENT
-  Just _ -> return eINVAL
+  Just NotFoundException -> return eNOENT
   Nothing -> print e >> return eFAULT

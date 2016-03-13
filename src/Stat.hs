@@ -1,6 +1,6 @@
 module Stat where
 
-import System.Fuse
+import System.Fuse.ByteString
 import System.Posix.Files
 import System.Posix (EpochTime, FileOffset)
 

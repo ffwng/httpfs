@@ -1,50 +1,50 @@
 {-# LANGUAGE OverloadedStrings #-}
 module FuseOps where
 
-import HTTPFS
+import FS
 import Stat
 import BufferedStream
 
-import System.Fuse hiding (EntryType)
+import System.Fuse.ByteString hiding (EntryType)
 import System.Posix.Types
 import Data.ByteString (ByteString)
 import Data.Maybe
 
-myGetFileStat :: FS -> FilePath -> IO (Either Errno FileStat)
-myGetFileStat o f = do
+myGetFileStat :: FS -> ByteString -> IO (Either Errno FileStat)
+myGetFileStat fs p = do
   ctx <- getFuseContext
-  if f == "/" || f == "." || f == ".."
+  if p == "/" || p == "." || p == ".."
     then return (Right $ dirStat ctx 0)
-    else Right . entryToFileStat ctx <$> getHTTPEntry o f
+    else Right . entryToFileStat ctx <$> getEntry fs Nothing p
 
-myOpen :: FS -> FilePath -> OpenMode -> OpenFileFlags
+myOpen :: FS -> ByteString -> OpenMode -> OpenFileFlags
        -> IO (Either Errno BufferedStream)
-myOpen o p m _ = case m of
+myOpen fs p m _ = case m of
   ReadOnly -> do
-    bf <- getHTTPContent o p
+    bf <- getFileContent' fs p
     return $ Right bf
   _ -> return $ Left ePERM
 
-myRead :: FS -> FilePath -> BufferedStream -> ByteCount -> FileOffset
+myRead :: FS -> ByteString -> BufferedStream -> ByteCount -> FileOffset
        -> IO (Either Errno ByteString)
 myRead _ _ bf bc fo = Right <$> readBufferedStream bf bc fo
 
-myRelease :: FilePath -> BufferedStream -> IO ()
+myRelease :: ByteString -> BufferedStream -> IO ()
 myRelease _ = closeBufferedStream
 
-myOpenDirectory :: FS -> FilePath -> IO Errno
+myOpenDirectory :: FS -> ByteString -> IO Errno
 myOpenDirectory _ _ = return eOK
 
-defaultStats :: FuseContext -> [(FilePath, FileStat)]
+defaultStats :: FuseContext -> [(ByteString, FileStat)]
 defaultStats ctx = [(".", dirStat ctx 0), ("..", dirStat ctx 0)]
 
-myReadDirectory :: FS -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-myReadDirectory o f = do
+myReadDirectory :: FS -> ByteString -> IO (Either Errno [(ByteString, FileStat)])
+myReadDirectory fs f = do
   ctx <- getFuseContext
-  Right . (\l -> defaultStats ctx ++ map (fmap $ entryToFileStat ctx) l)
-    <$> getHTTPDirectoryEntries o f
+  Right . (\l -> defaultStats ctx ++ map (fmap $ entryTypeToFileStat ctx) l)
+    <$> getDirectoryEntries fs f
 
-getFileSystemStats :: String -> IO (Either Errno FileSystemStats)
+getFileSystemStats :: ByteString -> IO (Either Errno FileSystemStats)
 getFileSystemStats _ = return $ Right FileSystemStats
   { fsStatBlockSize = 512
   , fsStatBlockCount = 1
@@ -68,8 +68,12 @@ myFuseOperations o = defaultFuseOps
 
 entryToFileStat :: FuseContext -> Entry -> FileStat
 entryToFileStat ctx = go
-  where go Dir = dirStat ctx 0
-        go IncompleteFile = fStat Nothing Nothing
-        go (File t s) = fStat t s
+  where go (Dir _) = dirStat ctx 0
+        go (File stats) = fStat stats
 
-        fStat t s = fileStat ctx (fromMaybe 0 t) (fromMaybe 0 s)
+        fStat (FileStats s t) = fileStat ctx (fromMaybe 0 t) (fromMaybe 0 s)
+
+entryTypeToFileStat :: FuseContext -> EntryType -> FileStat
+entryTypeToFileStat ctx = entryToFileStat ctx . trans
+  where trans DirType = Dir DirectoryStats
+        trans FileType = File (FileStats Nothing Nothing)

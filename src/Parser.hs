@@ -1,44 +1,39 @@
 module Parser (
-  EntryName, EntryDate, EntrySize, Entry(..),
+  EntryName, EntryDate, EntrySize, Entry(..), FileStats(..),
   Parser, xpathParser,
   parseByteString
 ) where
 
+import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.UTF8 as B8
+import qualified Data.ByteString.Lazy.UTF8 as L8
 import Text.XML.HXT.Core
 import Text.XML.HXT.XPath.Arrows
 import Network.URI
-import System.Posix.Types
 
-type EntryName = String
-type EntryDate = EpochTime
-type EntrySize = FileOffset
+import FS
 
-data Entry = Dir
-           | IncompleteFile
-           | File (Maybe EntryDate) (Maybe EntrySize)
-           deriving (Show, Eq, Ord)
-
-newtype Parser = Parser (IOSLA (XIOState ()) XmlTree (EntryName, Entry))
+newtype Parser = Parser (IOSLA (XIOState ()) XmlTree (EntryName, EntryType))
 
 xpathParser :: String -> Parser
 xpathParser p = Parser $ getXPathTreesInDoc p >>> entries
 
-parseByteString :: Parser -> BL.ByteString -> IO [(EntryName, Entry)]
+parseByteString :: Parser -> BL.ByteString -> IO [(EntryName, EntryType)]
 parseByteString (Parser parse) bs = do
-  let bs' = BL.unpack bs
+  let bs' = L8.toString bs
       doc = readString [withValidate no, withParseHTML yes, withWarnings no] bs'
 
   runX (doc >>> parse)
 
-entries :: ArrowXml a => a XmlTree (EntryName, Entry)
-entries = getAttrValue0 "href" >>> isA isValid >>> arr (mkEntry . unEscapeString) where
+entries :: ArrowXml a => a XmlTree (EntryName, EntryType)
+entries = getAttrValue0 "href" >>> isA isValid >>> arr (mkEntry . unEscapeString)
 
-mkEntry :: String -> (EntryName, Entry)
-mkEntry "" = ("", IncompleteFile)
+mkEntry :: String -> (EntryName, EntryType)
+mkEntry "" = (B.empty, FileType)
 mkEntry str = case splitLast str of
-  (name, '/') -> (name, Dir)
-  _ -> (str, IncompleteFile)
+  (name, '/') -> (B8.fromString name, DirType)
+  _ -> (B8.fromString str, FileType)
 
 splitLast :: [a] -> ([a], a)
 splitLast [] = error "splitLast"

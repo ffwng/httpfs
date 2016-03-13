@@ -1,14 +1,9 @@
 {-# LANGUAGE TupleSections, OverloadedStrings #-}
 module HTTPFS (
-  EntryName, EntryDate, EntrySize, Entry(..),
-  FS,
-  newFS,
-  getHTTPDirectoryEntries,
-  getHTTPEntry,
-  getHTTPContent
+  newHTTPFS
 ) where
 
-import MemCache
+import FS
 import BufferedStream
 import Parser
 
@@ -17,7 +12,8 @@ import Data.Word
 import Data.IORef
 import Data.Time
 import Data.Time.Clock.POSIX
-import qualified Data.ByteString.Char8 as B8
+import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.UTF8 as B8
 import Control.Monad
 import Control.Exception
 import Network.HTTP.Types
@@ -27,117 +23,95 @@ import Text.Read
 import System.Posix (EpochTime)
 import Foreign.C (CTime(..))
 
-data CacheEntry = FoundError HttpException | Found Entry
-  deriving (Show)
-
-type Cache = MemCache FilePath CacheEntry
-
-defaultTimeout :: Int
-defaultTimeout = 600
-
-data FS = FS {
-  mkRequest :: FilePath -> Request,
+data HTTPFS = HTTPFS {
+  mkRequest :: B.ByteString -> Request,
   manager :: Manager,
-  entryParser :: Parser,
-  cache :: Cache
+  entryParser :: Parser
   }
 
-newFS :: (B8.ByteString -> Request) -> Parser -> ManagerSettings -> IO FS
-newFS mkReq p manset = do
-  let mkReq' = mkReq . B8.pack . encode
+newHTTPFS :: (B.ByteString -> Request) -> Parser -> ManagerSettings -> IO FS
+newHTTPFS mkReq p manset = do
+  let mkReq' = mkReq . B8.fromString . encode . B8.toString
       encode = escapeURIString (\c -> isUnreserved c || c == '/')
-  man <- newManager manset
-  mc <- newMemCache defaultTimeout
-  return $ FS mkReq' man p mc
+  man <- newManager manset { managerWrapIOException = exceptionWrapper }
+  let fs = HTTPFS mkReq' man p
+  return FS {
+      getEntry = getHTTPEntry fs,
+      getDirectoryEntries = getHTTPDirectoryEntries fs,
+      getFileContent = getHTTPContent fs
+    }
+
+exceptionWrapper :: IO a -> IO a
+exceptionWrapper = handleJust wrap throwIO where
+  wrap StatusCodeException{} = Just NotFoundException
+  wrap _ = Nothing
 
 
-getHTTPDirectoryEntries :: FS -> FilePath -> IO [(EntryName, Entry)]
+getHTTPDirectoryEntries :: HTTPFS -> B.ByteString -> IO [(EntryName, EntryType)]
 getHTTPDirectoryEntries fs p = do
-  let p' = mkDir p
-  (_, res) <- cacheResponse parseDir fs p' $ httpLbs (mkRequest fs p') (manager fs)
-  let content = responseBody res
-  entries <- parseByteString (entryParser fs) content
-  forM_ entries $ \(n, e) -> insertWith betterEntry (cache fs) (p' ++ n) (Found e)
-  return entries
-  where
-    betterEntry (Found IncompleteFile) e = e
-    betterEntry e _ = e
+    let p' = mkDir p
+    res <- httpLbs (mkRequest fs p') (manager fs)
+    parseByteString (entryParser fs) (responseBody res)
 
-getHTTPEntry :: FS -> FilePath -> IO Entry
-getHTTPEntry fs p = do
-  cached <- query (cache fs) p
-  case cached of
-    Just (FoundError ex) -> throwIO ex
-    Just (Found IncompleteFile) -> cacheResponse' parseFile fs p $ requestHead fs p
-    Just (Found e) -> return e
-    Nothing -> cacheResponse' id fs p $ do
-      dirRes <- tryJust is404 $ requestHead fs (mkDir p)
-      case dirRes of
-        Right res -> return $ parseDir res
-        Left _ -> parseFile <$> requestHead fs p
-  where
-    is404 (StatusCodeException s _ _) | s == status404 = Just ()
-    is404 _ = Nothing
+getHTTPEntry :: HTTPFS -> Maybe EntryType -> B.ByteString -> IO Entry
+getHTTPEntry fs (Just FileType) p = File <$> getHTTPFileStats fs p
+getHTTPEntry fs _ p = (Dir <$> getHTTPDirectoryStats fs p) `catch` \NotFoundException -> File <$> getHTTPFileStats fs p
 
-getHTTPContent :: FS -> FilePath -> IO BufferedStream
-getHTTPContent fs p = do
+getHTTPDirectoryStats :: HTTPFS -> B.ByteString -> IO DirectoryStats
+getHTTPDirectoryStats fs p = parseDirStats <$> requestHead fs (mkDir p)
+
+getHTTPFileStats :: HTTPFS -> B.ByteString -> IO FileStats
+getHTTPFileStats fs p = parseFileStats <$> requestHead fs p
+
+getHTTPContent :: HTTPFS -> (FileStats -> IO ()) -> B.ByteString -> IO BufferedStream
+getHTTPContent fs newStats p = do
   closeAct <- newIORef (return ())
 
   let close = join $ readIORef closeAct
 
   let gen off = do
-        let req = mkRequest fs p
-            req' = req { requestHeaders = h : requestHeaders req }
-            h = ("Range", "bytes=" <> B8.pack (show start) <> "-")
-            start = fromIntegral off :: Word64
         close -- close previous request
-        (_, res) <- cacheResponse parseFile fs p $ responseOpen req' (manager fs)
-        writeIORef closeAct (responseClose res)
+
+        let reqBase = mkRequest fs p
+            req = reqBase { requestHeaders = h : requestHeaders reqBase }
+            h = ("Range", "bytes=" <> B.pack (show start) <> "-")
+            start = fromIntegral off :: Word64
+
+        res <- responseOpen req $ manager fs
+        writeIORef closeAct $ responseClose res
+        newStats $ parseFileStats res
 
         return $ brRead (responseBody res)
 
   withAutoRestart <$> makeBufferedStream gen close
 
-cacheResponse' :: (a -> Entry) -> FS -> FilePath -> IO a -> IO Entry
-cacheResponse' f fs p act = fst <$> cacheResponse f fs p act
+parseDirStats :: Response a -> DirectoryStats
+parseDirStats _ = DirectoryStats
 
-cacheResponse :: (a -> Entry) -> FS -> FilePath -> IO a -> IO (Entry, a)
-cacheResponse f fs p act = do
-  res <- tryJust scEx act
-  case res of
-    Right a -> let e = f a in insert (cache fs) p (Found e) >> return (e, a)
-    Left ex -> insert (cache fs) p (FoundError ex) >> throwIO ex
-  where
-    scEx ex@StatusCodeException {} = Just ex
-    scEx _ = Nothing
-
-parseDir :: Response a -> Entry
-parseDir _ = Dir
-
-parseFile :: Response a -> Entry
-parseFile res =
+parseFileStats :: Response a -> FileStats
+parseFileStats res =
   let headers = responseHeaders res
-      size = lookup "Content-Length" headers >>= readMaybe . B8.unpack
+      size = lookup "Content-Length" headers >>= readMaybe . B.unpack
       time = fmap toEpochTime $ lookup "Last-Modified" headers >>= parseHTTPTime
-  in File time size
+  in FileStats size time
 
 toEpochTime :: UTCTime -> EpochTime
 toEpochTime = CTime . truncate . utcTimeToPOSIXSeconds
 
-parseHTTPTime :: B8.ByteString -> Maybe UTCTime
+parseHTTPTime :: B.ByteString -> Maybe UTCTime
 parseHTTPTime bs =
   msum $ map (\f -> parseTimeM True defaultTimeLocale f s) [rfc822, rfc850, ansiC]
   where
-    s = B8.unpack bs
+    s = B.unpack bs
     rfc822 = "%a, %d %b %Y %H:%M:%S %Z"
     rfc850 = "%A, %d-%b-y %H:%M:%S %Z"
     ansiC = "%a %b %e %H:%M:%S %Y"
 
-requestHead :: FS -> FilePath -> IO (Response ())
+requestHead :: HTTPFS -> B.ByteString -> IO (Response ())
 requestHead fs p = do
   let req = mkRequest fs p
   httpNoBody (req { method = methodHead }) (manager fs)
 
-mkDir :: String -> String
+mkDir :: B.ByteString -> B.ByteString
 mkDir "/" = "/"
-mkDir p = p ++ "/"
+mkDir p = p <> "/"
