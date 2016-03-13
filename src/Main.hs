@@ -1,13 +1,14 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import FuseOps
 import FS
 import HTTPFS
+import CachingFS
 import CommandLine
 import Parser
 
 import Control.Monad
-import Network.HTTP.Types
 import Network.HTTP.Client
 import Network.HTTP.Client.OpenSSL
 import OpenSSL.Session
@@ -18,9 +19,7 @@ import Control.Exception
 import qualified Data.ByteString.Char8 as B
 
 checkServer :: FS -> IO ()
-checkServer fs = do
-  _ <- getHTTPEntry fs "/" -- throws exception on error
-  return ()
+checkServer fs = void $ getDirectoryEntries fs "/" -- throws exception on error
 
 mkContext :: Bool -> IO SSLContext
 mkContext novalidate = do
@@ -43,7 +42,7 @@ mkFS ctx auth p url = do
       reqPath' = if B.last reqPath == '/' then B.init reqPath else reqPath
       mkReq fp = req { path = reqPath' <> fp }
 
-  newFS mkReq p settingsWithAuth
+  newHTTPFS mkReq p settingsWithAuth >>= addCache 600
 
 main :: IO ()
 main = withOpenSSL $ do

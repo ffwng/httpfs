@@ -22,7 +22,8 @@ executable httpfs
   build-depends:       base, http-client, hxt, HFuse, bytestring,
                        data-default, unix, http-types, http-client-openssl,
                        connection, network-uri, containers, time, old-locale,
-                       optparse-applicative, HsOpenSSL, hxt-xpath, stm
+                       optparse-applicative, HsOpenSSL, hxt-xpath,
+                       bytestring-trie, utf8-string
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -threaded -Wall -O2
