@@ -53,7 +53,7 @@ fromInfo t p info = case info of
   TypeInfo ty -> (p, typeInfo ty) : parentInfos
   FullInfo e cs -> (p, entryInfo e (t <$ cs)) : maybe [] cInfos cs ++ parentInfos
   where
-    parentInfos = []
+    parentInfos = map (\p' -> (p', DirInfo t Nothing)) . init $ PM.segments p
 
     typeInfo FileType = FileInfo t Nothing
     typeInfo DirType = DirInfo t Nothing
