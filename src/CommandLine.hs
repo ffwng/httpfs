@@ -13,7 +13,8 @@ data CmdArgs = CmdArgs {
   baseUrl :: String,
   mountPoint :: String,
   otherArgs :: [String],
-  linkXPath :: String
+  linkXPath :: String,
+  logRequests :: Bool
   }
 
 cmdArgs :: Parser CmdArgs
@@ -33,6 +34,7 @@ cmdArgs = CmdArgs
           <*> many (strArgument $ metavar "ARGS..."
                     <> help "Additional FUSE arguments like -f -d (use --)")
           <*> strOption (long "xpath" <> help "XPath for <a> elements (default //a)" <> value "//a")
+          <*> switch ( long "log-requests" <> help "Logs HTTP requests (should be used with -- -f)" )
 
 readAuth :: String -> Either String (B.ByteString, B.ByteString)
 readAuth s = case B.split ':' $ B.pack s of

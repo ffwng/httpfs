@@ -30,19 +30,27 @@ mkContext novalidate = do
     contextSetVerificationMode c $ VerifyPeer False False Nothing
   return c
 
-mkFS :: IO SSLContext -> Maybe BasicAuth -> Parser -> String -> IO FS
-mkFS ctx auth p url = do
+logRequest :: Request -> IO ()
+logRequest r = B.putStrLn $ method r <> " " <> path r <> case lookup "Range" (requestHeaders r) of
+  Nothing -> B.empty
+  Just range -> " (" <> range <> ")"
+
+mkFS :: IO SSLContext -> Maybe BasicAuth -> Parser -> String -> Bool -> IO FS
+mkFS ctx auth p url logR = do
   let settings = opensslManagerSettings ctx
       settingsWithAuth = case auth of
         Nothing -> settings
         Just (u, pw) -> settings { managerModifyRequest = return . applyBasicAuth u pw }
+      settingsWithLog = if logR
+        then settingsWithAuth { managerModifyRequest = \r -> logRequest r >> managerModifyRequest settingsWithAuth r }
+        else settingsWithAuth
 
   req <- parseUrl url
   let reqPath = path req
       reqPath' = if B.last reqPath == '/' then B.init reqPath else reqPath
       mkReq fp = req { path = reqPath' <> fp }
 
-  newHTTPFS mkReq p settingsWithAuth >>= addCache 600
+  newHTTPFS mkReq p settingsWithLog >>= addCache 600
 
 main :: IO ()
 main = withOpenSSL $ do
@@ -53,7 +61,7 @@ main = withOpenSSL $ do
 
   let ctx = mkContext $ disableCertificateValidation args
       p = xpathParser $ linkXPath args
-  fs <- mkFS ctx (basicAuth args) p (baseUrl args)
+  fs <- mkFS ctx (basicAuth args) p (baseUrl args) (logRequests args)
 
   checkServer fs
 
