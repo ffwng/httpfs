@@ -2,6 +2,7 @@ module FSCache where
 
 import qualified Data.ByteString.Char8 as B
 import Data.Maybe
+import Control.Arrow ((***))
 
 import FS
 import PathMap (Path, PathMap, (</>))
@@ -61,7 +62,7 @@ fromInfo t p info = case info of
     entryInfo (File stats) _ = FileInfo t (Just (stats, t))
     entryInfo (Dir _) cs = DirInfo t cs
 
-    cInfos = map (\(p', i) -> (p </> p', typeInfo i))
+    cInfos = map ((p </>) *** typeInfo)
 
 insert :: t -> Path -> EntryInfo -> Cache t -> Cache t
 insert t p0 info cache = foldr (uncurry $ PM.insertWith' combine) cache $ fromInfo t p0 info
