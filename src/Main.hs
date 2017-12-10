@@ -8,6 +8,7 @@ import CachingFS
 import CommandLine
 import Parser
 
+import Data.Monoid
 import Control.Monad
 import Network.HTTP.Client
 import Network.HTTP.Client.OpenSSL
@@ -45,7 +46,7 @@ mkFS ctx auth p url logR = do
         then settingsWithAuth { managerModifyRequest = \r -> logRequest r >> managerModifyRequest settingsWithAuth r }
         else settingsWithAuth
 
-  req <- parseUrl url
+  req <- parseUrlThrow url
   let reqPath = path req
       reqPath' = if B.last reqPath == '/' then B.init reqPath else reqPath
       mkReq fp = req { path = reqPath' <> fp }

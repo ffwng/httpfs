@@ -1,8 +1,8 @@
 module PathMap where
 
-import qualified Data.Trie as T
-import qualified Data.Trie.Convenience as T
-import qualified Data.Trie.Internal as T
+import qualified Data.Trie.BigEndianPatricia.Base as T
+import qualified Data.Trie.BigEndianPatricia.Convenience as T
+import qualified Data.Trie.BigEndianPatricia.Internal as T
 import qualified Data.ByteString as B
 import Data.Monoid
 import Data.Word

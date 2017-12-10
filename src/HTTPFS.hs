@@ -33,7 +33,7 @@ newHTTPFS :: (B.ByteString -> Request) -> Parser -> ManagerSettings -> IO FS
 newHTTPFS mkReq p manset = do
   let mkReq' = mkReq . B8.fromString . encode . B8.toString
       encode = escapeURIString (\c -> isUnreserved c || c == '/')
-  man <- newManager manset { managerWrapIOException = exceptionWrapper }
+  man <- newManager manset { managerWrapException = exceptionWrapper }
   let fs = HTTPFS mkReq' man p
   return FS {
       getEntry = getHTTPEntry fs,
@@ -41,9 +41,9 @@ newHTTPFS mkReq p manset = do
       getFileContent = getHTTPContent fs
     }
 
-exceptionWrapper :: IO a -> IO a
-exceptionWrapper = handleJust wrap throwIO where
-  wrap StatusCodeException{} = Just NotFoundException
+exceptionWrapper :: request -> IO a -> IO a
+exceptionWrapper _ = handleJust wrap throwIO where
+  wrap (HttpExceptionRequest _ StatusCodeException{}) = Just NotFoundException
   wrap _ = Nothing
 
 

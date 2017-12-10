@@ -17,7 +17,8 @@ cabal-version:       >=1.10
 
 executable httpfs
   main-is:             Main.hs
-  -- other-modules:
+  other-modules:       BufferedStream, CachingFS, FS, FSCache, FuseOps, HTTPFS,
+                       Parser, PathMap, Stat, CommandLine
   other-extensions:    Arrows
   build-depends:       base, http-client, hxt, HFuse, bytestring,
                        data-default, unix, http-types, http-client-openssl,
@@ -30,7 +31,7 @@ executable httpfs
 
 executable test
   main-is:             Test.hs
-  -- other-modules:
+  other-modules:       BufferedStream, CachingFS, FS, FSCache, PathMap, TestingFS
   build-depends:       base, HFuse, bytestring,
                        unix, containers, time,
                        unordered-containers, hashable,
