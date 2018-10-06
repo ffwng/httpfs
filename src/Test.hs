@@ -7,7 +7,6 @@ import CachingFS
 
 import System.Fuse.ByteString hiding (EntryType)
 import Control.Exception
-import Data.Monoid
 
 
 traverseFS :: FS -> IO EntrySize

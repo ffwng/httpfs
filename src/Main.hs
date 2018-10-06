@@ -8,7 +8,6 @@ import CachingFS
 import CommandLine
 import Parser
 
-import Data.Monoid
 import Control.Monad
 import Network.HTTP.Client
 import Network.HTTP.Client.OpenSSL

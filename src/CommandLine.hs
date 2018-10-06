@@ -1,7 +1,6 @@
 module CommandLine where
 
 import qualified Data.ByteString.Char8 as B
-import Data.Monoid
 import Control.Applicative
 import Options.Applicative
 

@@ -2,7 +2,7 @@
 # For more information, see: http://docs.haskellstack.org/en/stable/yaml_configuration/
 
 # Specifies the GHC version and set of packages available (e.g., lts-3.5, nightly-2015-09-21, ghc-7.10.2)
-resolver: lts-9.17
+resolver: lts-12.11
 
 # Local packages, usually specified by relative directory name
 packages:
@@ -11,12 +11,11 @@ packages:
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
 - hxt-xpath-9.1.2.2
-- text-1.2.2.2
 - data-or-1.0.0.5
 - git: git@github.com:ffwng/hfuse.git
   commit: b2d91d9f419a71e56a849afaf4c801497ce398ec
 - git: git@github.com:ffwng/bytestring-trie.git
-  commit: 735b605fdcc3665025f1f63c1389cd3127b76cae
+  commit: 06e7a9a79b69a3ffabe77f8d9f8dbbfb0d010352
 
 # Override default flag values for local packages and extra-deps
 flags: {}

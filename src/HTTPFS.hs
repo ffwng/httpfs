@@ -7,7 +7,6 @@ import FS
 import BufferedStream
 import Parser
 
-import Data.Monoid
 import Data.Word
 import Data.IORef
 import Data.Time

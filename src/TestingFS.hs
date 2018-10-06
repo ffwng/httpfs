@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module TestingFS where
 
-import Data.Monoid
 import qualified Data.ByteString.Char8 as B
 
 import FS
